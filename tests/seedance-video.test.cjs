@@ -212,12 +212,15 @@ test("DeepRouter Seedance 2.0 keeps automatic duration in metadata", () => {
   assert.equal(body.metadata.duration_seconds, undefined);
 });
 
-test("Seedance 2.0 generation count supports 1 through 8 without affecting other video models", () => {
+test("all Seedance models limit generation count to 1 through 4", () => {
   setTestSettings({ videoModel: "dreamina-seedance-2-0-260128", videoCount: 8 });
-  assert.equal(effectiveVideoCount(), 8);
+  assert.equal(effectiveVideoCount(), 4);
 
   setTestSettings({ videoModel: "doubao-seedance-2-0-mini-260615", videoCount: 12 });
-  assert.equal(effectiveVideoCount(), 8);
+  assert.equal(effectiveVideoCount(), 4);
+
+  setTestSettings({ videoModel: "seedance-1.0-pro", videoCount: 3 });
+  assert.equal(effectiveVideoCount(), 3);
 
   setTestSettings({ videoModel: "grok-video-3", videoCount: 8 });
   assert.equal(effectiveVideoCount(), 1);
@@ -295,10 +298,10 @@ test("Seedance 2.5 applies official adaptive media restrictions", () => {
   assert.equal(effectiveVideoDuration(), -1);
 });
 
-test("Seedance 2.5 generation count supports 1 through 8", () => {
+test("Seedance 2.5 generation count is capped at 4", () => {
   setTestSettings({ videoModel: "doubao-seedance-2-5-260628", videoCount: 8 });
-  assert.equal(effectiveVideoCount(), 8);
+  assert.equal(effectiveVideoCount(), 4);
 
   setTestSettings({ videoModel: "doubao-seedance-2-5-260628", videoCount: 12 });
-  assert.equal(effectiveVideoCount(), 8);
+  assert.equal(effectiveVideoCount(), 4);
 });

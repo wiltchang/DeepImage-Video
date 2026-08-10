@@ -533,7 +533,7 @@ function normalizeState(input) {
   if (!input.settings?.videoStatusEndpoint || input.settings.videoStatusEndpoint === "/v1/videos/{id}") {
     settings.videoStatusEndpoint = DEFAULT_SETTINGS.videoStatusEndpoint;
   }
-  settings.videoCount = clampNumber(settings.videoCount, 1, 8, 1);
+  settings.videoCount = clampNumber(settings.videoCount, 1, 4, 1);
   if (input.settings?.imageSize && !input.settings?.imageAspectRatio) {
     settings.imageAspectRatio = aspectFromSize(input.settings.imageSize);
   }
@@ -1345,18 +1345,20 @@ function renderOutputOptions() {
   const videoAspectLabel = videoAspectRow?.querySelector(":scope > span");
   if (videoAspectLabel) videoAspectLabel.textContent = usesPixelSize ? "尺寸" : "比例";
   if (videoResolutionRow) videoResolutionRow.hidden = usesPixelSize;
-  if (videoCountRow) {
-    videoCountRow.hidden = !isSeedance2Model(state.settings.videoModel)
-      && !isSeedance25Model(state.settings.videoModel);
-  }
+  if (videoCountRow) videoCountRow.hidden = !isSeedanceModel(state.settings.videoModel);
   if (videoStyleRow) videoStyleRow.hidden = usesOfficialGrokRequest;
   if (videoAudioRow) videoAudioRow.hidden = usesOfficialGrokRequest;
   renderOptionGroup(els.videoResolutionGroup, "videoResolution", videoResolutionOptionsForModel(), effectiveVideoResolution());
-  renderOptionGroup(els.videoDurationGroup, "videoDuration", videoDurationOptionsForModel(), String(effectiveVideoDuration()));
+  renderStepperOptionGroup(
+    els.videoDurationGroup,
+    "videoDuration",
+    videoDurationOptionsForModel(),
+    String(effectiveVideoDuration())
+  );
   renderOptionGroup(
     els.videoCountGroup,
     "videoCount",
-    Array.from({ length: 8 }, (_, index) => ({ value: String(index + 1), label: String(index + 1) })),
+    Array.from({ length: 4 }, (_, index) => ({ value: String(index + 1), label: String(index + 1) })),
     String(effectiveVideoCount())
   );
   renderOptionGroup(els.videoStyleGroup, "videoStyle", VIDEO_STYLE_OPTIONS, state.settings.videoStyle);
@@ -1369,6 +1371,21 @@ function renderOptionGroup(container, key, options, currentValue) {
       return `<button class="option-button${active}" type="button" data-setting-key="${escapeAttr(key)}" data-value="${escapeAttr(option.value)}">${escapeHtml(option.label)}</button>`;
     })
     .join("");
+}
+
+function renderStepperOptionGroup(container, key, options, currentValue) {
+  const currentIndex = Math.max(0, options.findIndex((option) => String(option.value) === String(currentValue)));
+  const current = options[currentIndex] || { value: currentValue, label: currentValue };
+  const previous = options[currentIndex - 1];
+  const next = options[currentIndex + 1];
+  container.classList.add("option-stepper");
+  container.innerHTML = `
+    <button class="stepper-button" type="button" aria-label="上一个时长" title="上一个时长"
+      ${previous ? `data-setting-key="${escapeAttr(key)}" data-value="${escapeAttr(previous.value)}"` : "disabled"}>&#8592;</button>
+    <output class="stepper-value">${escapeHtml(current.label)}</output>
+    <button class="stepper-button" type="button" aria-label="下一个时长" title="下一个时长"
+      ${next ? `data-setting-key="${escapeAttr(key)}" data-value="${escapeAttr(next.value)}"` : "disabled"}>&#8594;</button>
+  `;
 }
 
 function imageSizeOptionsForModel() {
@@ -1610,6 +1627,15 @@ function isDeepRouterBaseUrl() {
   return /^https?:\/\/(?:www\.)?deeprouter\.top(?:\/|$)/i.test(String(state.settings.baseUrl || ""));
 }
 
+function isLinkMeshBaseUrl() {
+  return /^https?:\/\/ai\.linkmesh\.org(?:\/|$)/i.test(String(state.settings.baseUrl || ""));
+}
+
+function usesOfficialXaiVideoApi() {
+  return isLinkMeshBaseUrl()
+    || /^https?:\/\/(?:api\.)?x\.ai(?:\/|$)/i.test(String(state.settings.baseUrl || ""));
+}
+
 function usesDeepRouterVeoCompatibility(modelId = state.settings.videoModel) {
   const compactId = String(modelId || "").toLowerCase().replace(/[-_.]/g, "");
   return isDeepRouterBaseUrl() && /^veo31fast(?:preview)?$/.test(compactId);
@@ -1685,8 +1711,8 @@ function effectiveVideoDuration(modelId = state.settings.videoModel) {
 }
 
 function effectiveVideoCount(modelId = state.settings.videoModel) {
-  return isSeedance2Model(modelId) || isSeedance25Model(modelId)
-    ? clampNumber(state.settings.videoCount, 1, 8, 1)
+  return isSeedanceModel(modelId)
+    ? clampNumber(state.settings.videoCount, 1, 4, 1)
     : 1;
 }
 
@@ -1730,7 +1756,7 @@ function imageStyleOptionsForModel() {
 function setVisualOption(key, value) {
   if (!Object.prototype.hasOwnProperty.call(DEFAULT_SETTINGS, key)) return;
   if (key === "videoDuration") state.settings[key] = effectiveVideoDurationForValue(value);
-  else if (key === "videoCount") state.settings[key] = clampNumber(value, 1, 8, 1);
+  else if (key === "videoCount") state.settings[key] = clampNumber(value, 1, 4, 1);
   else state.settings[key] = value;
   saveState();
   renderOutputOptions();
@@ -2438,7 +2464,8 @@ async function generateImage(prompt) {
   syncImageRequestControls();
 
   try {
-    const request = buildImageRequest(requestPrompt, references, isEdit);
+    const requestReferences = await prepareGrokImageReferences(references, settings.imageModel);
+    const request = buildImageRequest(requestPrompt, requestReferences, isEdit);
     task.requestMode = request.label;
     const response = await fetchImageRequestWithRetry(request, task, controller.signal);
     if (task.retryCount) task.rawStatus = "自动重试后已连接上游";
@@ -2479,6 +2506,57 @@ function imageTaskParams(isEdit) {
     style: settings.imageStyle,
     count: clampNumber(settings.imageCount, 1, 4, 1),
   };
+}
+
+async function prepareGrokImageReferences(references, modelId = state.settings.imageModel) {
+  if (!isGrokImagineImageModel(modelId) || references.length !== 1) return references;
+  const targetRatio = parseAspectRatio(effectiveImageAspectRatio(modelId));
+  const reference = references[0];
+  if (!targetRatio || !reference?.dataUrl?.startsWith("data:image/")) return references;
+  try {
+    const image = await loadImageForCanvas(reference.dataUrl);
+    const sourceRatio = image.naturalWidth / image.naturalHeight;
+    if (Math.abs(sourceRatio - targetRatio) < 0.01) return references;
+    const longestSide = Math.min(2048, Math.max(image.naturalWidth, image.naturalHeight));
+    const width = targetRatio >= 1 ? longestSide : Math.max(1, Math.round(longestSide * targetRatio));
+    const height = targetRatio >= 1 ? Math.max(1, Math.round(longestSide / targetRatio)) : longestSide;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) return references;
+    const scale = Math.min(width / image.naturalWidth, height / image.naturalHeight);
+    const drawWidth = Math.round(image.naturalWidth * scale);
+    const drawHeight = Math.round(image.naturalHeight * scale);
+    context.drawImage(image, Math.round((width - drawWidth) / 2), Math.round((height - drawHeight) / 2), drawWidth, drawHeight);
+    const blob = await canvasToBlob(canvas, "image/png");
+    if (!blob) return references;
+    const name = `${String(reference.name || "reference").replace(/\.[^.]+$/, "")}-${effectiveImageAspectRatio(modelId).replace(":", "x")}.png`;
+    return [await readMediaFile(new File([blob], name, { type: "image/png" }))];
+  } catch {
+    return references;
+  }
+}
+
+function parseAspectRatio(value) {
+  const match = String(value || "").match(/^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/);
+  if (!match) return 0;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  return width > 0 && height > 0 ? width / height : 0;
+}
+
+function loadImageForCanvas(source) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("无法读取参考图片尺寸"));
+    image.src = source;
+  });
+}
+
+function canvasToBlob(canvas, type) {
+  return new Promise((resolve) => canvas.toBlob(resolve, type));
 }
 
 function buildImageRequest(prompt, references, isEdit) {
@@ -3144,14 +3222,18 @@ function buildSeedance20Content(prompt) {
 }
 
 function buildGrokVideoRequest(prompt, profile) {
+  const endpoint = videoGenerationEndpoint(profile);
   const video = draftMedia.videoReferences[0];
-  if (video?.dataUrl) return buildGrokVideoEditRequest(prompt, profile, video);
-  return buildGrokJsonVideoRequest(prompt, profile, videoGenerationEndpoint(profile));
+  if (video?.dataUrl && isGrokJsonVideoEndpoint(endpoint)) return buildGrokVideoEditRequest(prompt, profile, video);
+  return isGrokJsonVideoEndpoint(endpoint)
+    ? buildGrokJsonVideoRequest(prompt, profile, endpoint)
+    : buildGrokMultipartVideoRequest(prompt, profile, endpoint);
 }
 
 function buildGrokTextVideoFallbackRequest(prompt, profile, request, errorMessage) {
   const hasImage = Boolean(draftMedia.videoImages[0] || draftMedia.firstFrame || draftMedia.lastFrame);
   if (!isGrokImagine15Model(state.settings.videoModel) || hasImage) return null;
+  if (isDeepRouterBaseUrl()) return null;
   if (isGrokJsonVideoEndpoint(request?.endpoint)) return null;
   if (!/requires? (?:a )?reference image|需要(?:上传)?参考图|必须(?:提供|上传).*图片/i.test(String(errorMessage || ""))) return null;
   return buildGrokJsonVideoRequest(prompt, profile, "/v1/videos/generations");
@@ -3179,6 +3261,32 @@ function buildGrokJsonVideoRequest(prompt, profile, endpoint) {
     endpoint,
     headers: authHeaders(),
     body: JSON.stringify(body),
+  };
+}
+
+function buildGrokMultipartVideoRequest(prompt, profile, endpoint) {
+  const settings = state.settings;
+  const duration = effectiveVideoDuration(settings.videoModel);
+  const form = new FormData();
+  form.append("model", settings.videoModel);
+  form.append("prompt", prompt);
+  form.append("size", effectiveVideoAspectRatio(settings.videoModel));
+  form.append("seconds", String(duration));
+  if (!isGrokImagine15Model(settings.videoModel)) {
+    form.append("duration", String(duration));
+    form.append("resolution", effectiveVideoResolution(settings.videoModel));
+  }
+  const reference = draftMedia.firstFrame
+    || draftMedia.videoImages[0]
+    || draftMedia.lastFrame
+    || draftMedia.videoReferences[0];
+  if (reference?.file) form.append("input_reference", reference.file, reference.name);
+  else if (reference?.dataUrl) form.append("input_reference", reference.dataUrl);
+  return {
+    label: `${profile?.vendor || "Grok"} DeepRouter Multipart 参数`,
+    endpoint,
+    headers: rawAuthHeaders(),
+    body: form,
   };
 }
 
@@ -3300,7 +3408,12 @@ function geminiVideoImage(item) {
 function videoGenerationEndpoint(profile) {
   const endpoint = state.settings.videoEndpoint || DEFAULT_SETTINGS.videoEndpoint;
   const defaultLike = !endpoint || endpoint === DEFAULT_SETTINGS.videoEndpoint;
-  if (profile?.provider === "xai" && (defaultLike || endpoint === "/v1/videos")) return "/v1/videos/generations";
+  if (profile?.provider === "xai") {
+    if (usesOfficialXaiVideoApi()) return "/v1/videos/generations";
+    if (isDeepRouterBaseUrl()) return "/v1/videos";
+    if (defaultLike) return "/v1/videos";
+    return endpoint;
+  }
   if (profile?.provider === "sora" && defaultLike) return "/v1/videos";
   if (profile?.provider === "seedance" && isSeedance20UnifiedModel(state.settings.videoModel)
       && !usesNewApiSeedance20Task(state.settings.videoModel) && defaultLike) {
@@ -3330,7 +3443,7 @@ function videoTaskParams() {
     aspectRatio: effectiveVideoAspectRatio(settings.videoModel),
     resolution: effectiveVideoResolution(settings.videoModel),
     duration: duration === -1 ? "自动" : `${duration}s`,
-    count: isSeedance2Model(settings.videoModel) || isSeedance25Model(settings.videoModel)
+    count: isSeedanceModel(settings.videoModel)
       ? effectiveVideoCount(settings.videoModel)
       : undefined,
     style: settings.videoStyle,
@@ -3480,6 +3593,9 @@ function shouldStopMissingVideoTaskPolling(attempts) {
 function videoStatusEndpointForTask(task) {
   const endpoint = state.settings.videoStatusEndpoint || DEFAULT_SETTINGS.videoStatusEndpoint;
   const defaultLike = !endpoint || endpoint === DEFAULT_SETTINGS.videoStatusEndpoint || endpoint === "/v1/videos/{id}";
+  if (task?.provider === "xai" && /^\/v1\/videos(?:\/generations)?$/i.test(String(task.requestEndpoint || ""))) {
+    return "/v1/videos/{id}";
+  }
   if (task?.provider === "xai" && defaultLike) return "/v1/videos/{id}";
   if (task?.provider === "sora" && defaultLike) return "/v1/videos/{id}";
   if (task?.provider === "seedance" && task.requestEndpoint === "/api/v3/contents/generations/tasks" && defaultLike) {
@@ -3496,6 +3612,9 @@ function videoStatusEndpointForTask(task) {
 
 function videoStatusHeadersForTask(task) {
   if (task?.provider === "xai") {
+    if (isDeepRouterBaseUrl() && task.requestEndpoint === "/v1/videos") {
+      return { ...rawAuthHeaders(), "Content-Type": "application/json" };
+    }
     return authHeaders();
   }
   if (task?.provider === "veo" && task.requestEndpoint === "/v1/videos") {
@@ -3505,9 +3624,14 @@ function videoStatusHeadersForTask(task) {
 }
 
 async function fetchVideoTaskResource(url, task) {
-  let response = await fetch(url, { headers: videoStatusHeadersForTask(task) });
+  const initialHeaders = videoStatusHeadersForTask(task);
+  let response = await fetch(url, { headers: initialHeaders });
   if (![401, 403].includes(response.status) || task?.provider !== "xai" || !isDeepRouterBaseUrl()) return response;
-  response = await fetch(url, { headers: { ...rawAuthHeaders(), "Content-Type": "application/json" } });
+  const usesBearer = /^Bearer\s/i.test(String(initialHeaders.Authorization || ""));
+  const fallbackHeaders = usesBearer
+    ? { ...rawAuthHeaders(), "Content-Type": "application/json" }
+    : authHeaders();
+  response = await fetch(url, { headers: fallbackHeaders });
   return response;
 }
 
@@ -3543,8 +3667,18 @@ function renderImages() {
   const tasks = state.visualTasks
     .filter((task) => task.sessionId === activeVisualSessionId)
     .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-  els.imageGrid.innerHTML = "";
-  els.imageHistory.innerHTML = "";
+  const previousSessionId = els.imageGrid.dataset.sessionId || "";
+  const previousTaskIds = new Set(
+    Array.from(els.imageGrid.children, (node) => node.dataset.taskId).filter(Boolean)
+  );
+  const distanceFromBottom = els.visualCanvas.scrollHeight
+    - els.visualCanvas.scrollTop
+    - els.visualCanvas.clientHeight;
+  const sessionChanged = previousSessionId !== String(activeVisualSessionId || "");
+  const hasNewTask = tasks.some((task) => !previousTaskIds.has(String(task.id)));
+  const shouldFollowNewTask = !sessionChanged && hasNewTask && distanceFromBottom < 96;
+  const previousScrollTop = els.visualCanvas.scrollTop;
+
   els.taskCount.textContent = String(tasks.length);
   els.imageEmpty.hidden = tasks.length > 0;
   els.visualEmptyText.textContent =
@@ -3554,13 +3688,69 @@ function renderImages() {
         : "输入镜头描述，可上传首帧、尾帧、参考视频或音频。"
       : "输入画面描述，或上传参考图进行图生图。";
 
-  tasks.forEach((task) => {
-    els.imageGrid.appendChild(renderVisualTask(task));
-    els.imageHistory.prepend(renderHistoryItem(task));
-  });
+  reconcileVisualTaskNodes(els.imageGrid, tasks, renderVisualTask);
+  reconcileVisualTaskNodes(els.imageHistory, [...tasks].reverse(), renderHistoryItem);
+  els.imageGrid.dataset.sessionId = String(activeVisualSessionId || "");
   requestAnimationFrame(() => {
-    els.visualCanvas.scrollTop = els.visualCanvas.scrollHeight;
+    if (sessionChanged) {
+      els.visualCanvas.scrollTop = 0;
+      return;
+    }
+    if (shouldFollowNewTask) {
+      els.visualCanvas.scrollTop = els.visualCanvas.scrollHeight;
+      return;
+    }
+    const maximumScrollTop = Math.max(0, els.visualCanvas.scrollHeight - els.visualCanvas.clientHeight);
+    els.visualCanvas.scrollTop = Math.min(previousScrollTop, maximumScrollTop);
   });
+}
+
+function reconcileVisualTaskNodes(container, tasks, renderer) {
+  const existing = new Map(
+    Array.from(container.children)
+      .filter((node) => node.dataset.taskId)
+      .map((node) => [node.dataset.taskId, node])
+  );
+  tasks.forEach((task, index) => {
+    const taskId = String(task.id);
+    const signature = visualTaskRenderSignature(task);
+    let node = existing.get(taskId);
+    const isNew = !node;
+    if (!node || node.dataset.renderSignature !== signature) {
+      const replacement = renderer(task);
+      replacement.dataset.taskId = taskId;
+      replacement.dataset.renderSignature = signature;
+      if (replacement.classList.contains("visual-task")) replacement.classList.toggle("is-new", isNew);
+      if (node) node.replaceWith(replacement);
+      node = replacement;
+    }
+    const current = container.children[index];
+    if (current !== node) container.insertBefore(node, current || null);
+    existing.delete(taskId);
+  });
+  existing.forEach((node) => node.remove());
+}
+
+function visualTaskRenderSignature(task) {
+  const media = (task.media || []).map((value) => {
+    const source = String(value || "");
+    return `${source.length}:${source.slice(0, 48)}:${source.slice(-24)}`;
+  });
+  return JSON.stringify([
+    task.status,
+    task.model,
+    task.prompt,
+    task.createdAt,
+    task.requestMode,
+    task.rawStatus,
+    task.lastPollError,
+    task.error,
+    task.jobId,
+    media,
+    task.params,
+    task.references,
+    task.contextApplied,
+  ]);
 }
 
 function renderVisualTask(task) {
@@ -3821,7 +4011,7 @@ function applyVisualTaskSettings(task) {
         ? -1
         : clampNumber(parseInt(params.duration, 10), 1, 30, state.settings.videoDuration);
     }
-    if (params.count) state.settings.videoCount = clampNumber(params.count, 1, 8, state.settings.videoCount);
+    if (params.count) state.settings.videoCount = clampNumber(params.count, 1, 4, state.settings.videoCount);
     if (params.style) state.settings.videoStyle = params.style;
     if (params.audio) state.settings.videoAudio = params.audio === "开" || params.audio === true;
   } else {
@@ -4048,7 +4238,7 @@ function renderModelSummary(profile, modelId, visualMode) {
           ["比例", effectiveVideoAspectRatio(modelId)],
           ["清晰度", effectiveVideoResolution(modelId)],
           ["时长", effectiveVideoDuration(modelId) === -1 ? "自动" : `${effectiveVideoDuration(modelId)}s`],
-          ...(isSeedance2Model(modelId) ? [["数量", effectiveVideoCount(modelId)]] : []),
+          ...(isSeedanceModel(modelId) ? [["数量", effectiveVideoCount(modelId)]] : []),
           ["风格", state.settings.videoStyle],
           ["音频", effectiveVideoAudio(modelId) ? "开" : "关"],
         ]
@@ -4853,7 +5043,7 @@ function videoResultUrlsForTask(data, task) {
   if (media.length) return media;
   const status = String(extractTaskStatus(data) || "").toLowerCase();
   const completed = ["succeeded", "success", "completed", "complete", "finished", "done"].includes(status);
-  if (!completed || task?.provider !== "xai" || !task?.jobId || !isDeepRouterBaseUrl()) return [];
+  if (!completed || task?.provider !== "xai" || !task?.jobId) return [];
   const id = encodeVideoTaskId(task.jobId, task);
   return [apiUrl(`/v1/videos/${id}/content`)];
 }
