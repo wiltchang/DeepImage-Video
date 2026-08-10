@@ -19,6 +19,8 @@ const {
   extractJobId,
   extractTaskStatus,
   extractVideoUrls,
+  fetchVideoTaskResource,
+  generatedResultToMedia,
   materializeVideoUrls,
   normalizeModelRecords,
   normalizeState,
@@ -58,52 +60,46 @@ function buildVideo(model, provider, overrides = {}, draft = {}) {
   return buildVideoRequest("测试视频提示词", { id: model, provider, vendor });
 }
 
-test("Grok Imagine 1.5 supports text-to-video on the DeepRouter multipart endpoint", () => {
+test("Grok Imagine 1.5 uses the official JSON generation endpoint", () => {
   const request = buildVideo("grok-imagine-video-1.5-preview", "xai", {
     videoResolution: "720p",
     videoDuration: 20,
   });
+  const body = JSON.parse(request.body);
 
-  assert.equal(request.endpoint, "/v1/videos");
-  assert.equal(request.headers.Authorization, "test-key");
-  assert.equal(request.body instanceof FormData, true);
-  assert.equal(request.body.get("model"), "grok-imagine-video-1.5-preview");
-  assert.equal(request.body.get("prompt"), "测试视频提示词");
-  assert.equal(request.body.get("seconds"), "20");
-  assert.deepEqual([...request.body.keys()], ["model", "prompt", "size", "seconds"]);
-  assert.equal(request.body.has("input_reference"), false);
-});
-
-test("Grok Imagine 1.5 preserves every selected duration in the minimal multipart request", () => {
-  [6, 10, 12, 16, 20].forEach((duration) => {
-    const request = buildVideo("grok-imagine-video-1.5-preview", "xai", { videoDuration: duration });
-    assert.equal(request.body.get("seconds"), String(duration));
-    assert.deepEqual([...request.body.keys()], ["model", "prompt", "size", "seconds"]);
+  assert.equal(request.endpoint, "/v1/videos/generations");
+  assert.equal(request.headers.Authorization, "Bearer test-key");
+  assert.deepEqual(body, {
+    model: "grok-imagine-video-1.5-preview",
+    prompt: "测试视频提示词",
+    duration: 15,
+    aspect_ratio: "16:9",
+    resolution: "720p",
   });
 });
 
-test("Grok Imagine 1.5 retries text-to-video through the official JSON route", () => {
-  const multipart = buildVideo("grok-imagine-video-1.5-preview", "xai", {
+test("Grok video duration follows the official 1 to 15 second range", () => {
+  [1, 4, 8, 15].forEach((duration) => {
+    const request = buildVideo("grok-imagine-video-1.5-preview", "xai", { videoDuration: duration });
+    assert.equal(JSON.parse(request.body).duration, duration);
+  });
+  assert.equal(JSON.parse(buildVideo("grok-imagine-video", "xai", { videoDuration: 0 }).body).duration, 1);
+  assert.equal(JSON.parse(buildVideo("grok-imagine-video", "xai", { videoDuration: 20 }).body).duration, 15);
+});
+
+test("Grok Imagine no longer needs a multipart-to-JSON fallback", () => {
+  const request = buildVideo("grok-imagine-video-1.5-preview", "xai", {
     videoAspectRatio: "9:16",
     videoResolution: "720p",
-    videoDuration: 20,
+    videoDuration: 8,
   });
   const fallback = buildGrokTextVideoFallbackRequest(
     "测试视频提示词",
     { id: "grok-imagine-video-1.5-preview", provider: "xai", vendor: "xAI" },
-    multipart,
+    request,
     "grok 1.5 requires a reference image"
   );
-
-  assert.equal(fallback.endpoint, "/v1/videos/generations");
-  assert.equal(fallback.headers.Authorization, "Bearer test-key");
-  assert.deepEqual(JSON.parse(fallback.body), {
-    model: "grok-imagine-video-1.5-preview",
-    prompt: "测试视频提示词",
-    duration: 20,
-    aspect_ratio: "9:16",
-    resolution: "720p",
-  });
+  assert.equal(fallback, null);
 });
 
 test("Grok Imagine 1.5 does not use the text fallback when a reference image is present", () => {
@@ -119,26 +115,44 @@ test("Grok Imagine 1.5 does not use the text fallback when a reference image is 
   assert.equal(fallback, null);
 });
 
-test("Grok Imagine 1.5 uses the documented multipart endpoint with an image", () => {
+test("Grok Imagine 1.5 maps an input image into the official JSON body", () => {
   const reference = media();
-  reference.file = new Blob(["abcd"], { type: "image/png" });
   const request = buildVideo("grok-imagine-video-1.5-preview", "xai", {
     videoAspectRatio: "3:2",
     videoResolution: "1080p",
     videoDuration: 20,
   }, { firstFrame: reference });
+  const body = JSON.parse(request.body);
 
-  assert.equal(request.endpoint, "/v1/videos");
-  assert.equal(request.headers.Authorization, "test-key");
-  assert.equal(request.body instanceof FormData, true);
-  assert.equal(request.body.get("model"), "grok-imagine-video-1.5-preview");
-  assert.equal(request.body.get("size"), "3:2");
-  assert.equal(request.body.get("seconds"), "20");
-  assert.equal(request.body.has("resolution"), false);
-  assert.equal(request.body.has("duration"), false);
-  assert.equal(request.body.get("input_reference") instanceof Blob, true);
-  assert.equal(videoStatusHeadersForTask({ provider: "xai", requestEndpoint: request.endpoint }).Authorization, "test-key");
+  assert.equal(request.endpoint, "/v1/videos/generations");
+  assert.equal(request.headers.Authorization, "Bearer test-key");
+  assert.deepEqual(body, {
+    model: "grok-imagine-video-1.5-preview",
+    prompt: "测试视频提示词",
+    duration: 15,
+    aspect_ratio: "3:2",
+    resolution: "1080p",
+    image: { url: reference.dataUrl },
+  });
+  assert.equal(videoStatusHeadersForTask({ provider: "xai", requestEndpoint: request.endpoint }).Authorization, "Bearer test-key");
   assert.equal(videoStatusHeadersForTask({ provider: "xai", requestEndpoint: request.endpoint })["Content-Type"], "application/json");
+});
+
+test("continuing from a Grok video uses the official edits endpoint", () => {
+  const video = {
+    name: "result.mp4",
+    mime: "video/mp4",
+    size: 8,
+    dataUrl: "data:video/mp4;base64,dmlkZW8=",
+  };
+  const request = buildVideo("grok-imagine-video", "xai", {}, { videoReferences: [video] });
+  assert.equal(request.endpoint, "/v1/videos/edits");
+  assert.equal(request.headers.Authorization, "Bearer test-key");
+  assert.deepEqual(JSON.parse(request.body), {
+    model: "grok-imagine-video",
+    prompt: "测试视频提示词",
+    video: { url: video.dataUrl },
+  });
 });
 
 test("nested video task errors expose the upstream cause", () => {
@@ -240,10 +254,61 @@ test("authenticated DeepRouter video results are downloaded for browser playback
     const media = await materializeVideoUrls([
       "https://www.deeprouter.top/v1/videos/task_private/content",
     ], task);
-    assert.equal(receivedHeaders.Authorization, "test-key");
+    assert.equal(receivedHeaders.Authorization, "Bearer test-key");
     assert.match(media[0], /^blob:/);
     assert.equal(task.mediaSourceUrls[0], "https://www.deeprouter.top/v1/videos/task_private/content");
     URL.revokeObjectURL(media[0]);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("DeepRouter Grok polling retries raw authorization after Bearer is rejected", async () => {
+  setTestSettings({ baseUrl: "https://deeprouter.top", apiKey: "test-key" });
+  const received = [];
+  const originalFetch = global.fetch;
+  global.fetch = async (_url, options = {}) => {
+    received.push(options.headers?.Authorization);
+    if (received.length === 1) {
+      return new Response(JSON.stringify({ error: { message: "unauthorized" } }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({ status: "pending" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+
+  try {
+    const response = await fetchVideoTaskResource(
+      "https://deeprouter.top/v1/videos/request_test",
+      { provider: "xai" }
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(received, ["Bearer test-key", "test-key"]);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("cross-origin generated media remains reusable when browser download is blocked", async () => {
+  setTestSettings({ baseUrl: "https://deeprouter.top", apiKey: "test-key" });
+  const originalFetch = global.fetch;
+  global.fetch = async () => {
+    throw new TypeError("Failed to fetch");
+  };
+
+  try {
+    const result = await generatedResultToMedia(
+      "https://cdn.example.com/generated/result.png",
+      "image",
+      { id: "task-cors", type: "image", media: [] }
+    );
+    assert.equal(result.dataUrl, "https://cdn.example.com/generated/result.png");
+    assert.equal(result.mime, "image/png");
+    assert.equal(result.size, 0);
   } finally {
     global.fetch = originalFetch;
   }
@@ -268,12 +333,12 @@ test("Grok Imagine 1.5 supports the official JSON endpoint when configured", () 
   assert.deepEqual(body, {
     model: "grok-imagine-video-1.5-preview",
     prompt: "测试视频提示词",
-    duration: 20,
+    duration: 15,
     aspect_ratio: "2:3",
-    resolution: "720p",
+    resolution: "1080p",
     image: { url: "data:image/png;base64,YWJjZA==" },
   });
-  assert.equal(videoStatusHeadersForTask({ provider: "xai", requestEndpoint: request.endpoint }).Authorization, "test-key");
+  assert.equal(videoStatusHeadersForTask({ provider: "xai", requestEndpoint: request.endpoint }).Authorization, "Bearer test-key");
   assert.equal(videoStatusHeadersForTask({ provider: "xai", requestEndpoint: request.endpoint })["Content-Type"], "application/json");
 
   setTestSettings({ baseUrl: "https://api.x.ai", apiKey: "test-key" });
@@ -281,30 +346,35 @@ test("Grok Imagine 1.5 supports the official JSON endpoint when configured", () 
 });
 
 test("all Grok video models use the shared supported duration and resolution values", () => {
-  [6, 10, 12, 16, 20].forEach((duration) => {
+  [1, 4, 8, 15].forEach((duration) => {
     const request = buildVideo("grok-video-3", "xai", { videoDuration: duration });
-    assert.equal(request.body.get("seconds"), String(duration));
-    assert.equal(request.body.get("duration"), String(duration));
+    assert.equal(JSON.parse(request.body).duration, duration);
   });
 
   const standard = buildVideo("grok-video-3", "xai", { videoDuration: 20, videoResolution: "480p" });
-  assert.equal(standard.body.get("seconds"), "20");
-  assert.equal(standard.body.get("duration"), "20");
-  assert.equal(standard.body.get("resolution"), "480p");
+  assert.deepEqual(JSON.parse(standard.body), {
+    model: "grok-video-3",
+    prompt: "测试视频提示词",
+    duration: 15,
+    aspect_ratio: "16:9",
+    resolution: "480p",
+  });
 
   const pro = buildVideo("grok-video-3-pro", "xai", { videoDuration: 20, videoAspectRatio: "9:16" });
-  assert.equal(pro.body.get("seconds"), "20");
-  assert.equal(pro.body.get("size"), "9:16");
+  assert.equal(JSON.parse(pro.body).duration, 15);
+  assert.equal(JSON.parse(pro.body).aspect_ratio, "9:16");
 
   const repaired = buildVideo("grok-video-3", "xai", {
     videoAspectRatio: "21:9",
     videoResolution: "1080p",
     videoDuration: 15,
   });
-  assert.equal(repaired.body.get("size"), "16:9");
-  assert.equal(repaired.body.get("resolution"), "720p");
-  assert.equal(repaired.body.get("seconds"), "16");
-  assert.equal(repaired.body.get("duration"), "16");
+  assert.equal(JSON.parse(repaired.body).aspect_ratio, "16:9");
+  assert.equal(JSON.parse(repaired.body).resolution, "720p");
+  assert.equal(JSON.parse(repaired.body).duration, 15);
+
+  const quality = buildVideo("grok-imagine-video-1.5", "xai", { videoResolution: "1080p" });
+  assert.equal(JSON.parse(quality.body).resolution, "1080p");
 });
 
 test("DeepRouter Veo uses the documented multipart video endpoint", () => {

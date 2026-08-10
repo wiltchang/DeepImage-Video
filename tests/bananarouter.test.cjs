@@ -14,6 +14,8 @@ global.document = {
 const {
   buildChatRequest,
   buildImageRequest,
+  imageAspectOptionsForModel,
+  imageQualityOptionsForModel,
   imageSizeOptionsForModel,
   imageStyleOptionsForModel,
   isRetryableImageError,
@@ -46,6 +48,17 @@ test("BananaRouter generic model records retain inferred image types", () => {
     ["gemini-3.1-flash-image-preview", "image"],
     ["gemini-3-pro-preview", "chat"],
     ["claude-sonnet-4-5", "chat"],
+  ]);
+});
+
+test("xAI Grok Imagine image models retain image classification", () => {
+  const records = normalizeModelRecords([
+    { id: "grok-imagine-image", type: "model" },
+    { id: "grok-imagine-image-quality", type: "model" },
+  ]);
+  assert.deepEqual(records.map(({ id, type, provider }) => [id, type, provider]), [
+    ["grok-imagine-image", "image", "xai"],
+    ["grok-imagine-image-quality", "image", "xai"],
   ]);
 });
 
@@ -151,6 +164,59 @@ test("GPT Image models expose styles and apply them through the prompt", () => {
   assert.match(body.prompt, /雨夜街道[\s\S]*电影感构图/);
   assert.equal(body.style, undefined);
   assert.equal(body.stream, undefined);
+});
+
+test("Grok Imagine image generation uses official aspect ratio and resolution fields", () => {
+  setTestSettings({
+    ...bananaSettings,
+    imageModel: "grok-imagine-image-quality",
+    imageAspectRatio: "9:16",
+    imageSize: "1024x1024",
+    imageQuality: "2k",
+    imageStyle: "cinematic",
+    imageCount: 2,
+    imageEndpoint: "/v1/images/generations",
+  });
+  const request = buildImageRequest("未来城市", [], false);
+  const body = JSON.parse(request.body);
+
+  assert.deepEqual(imageAspectOptionsForModel().map((option) => option.value), ["9:16", "16:9", "2:3", "3:2", "1:1"]);
+  assert.deepEqual(imageQualityOptionsForModel().map((option) => option.value), ["1k", "2k"]);
+  assert.equal(request.endpoint, "/v1/images/generations");
+  assert.deepEqual(body, {
+    model: "grok-imagine-image-quality",
+    prompt: "未来城市",
+    n: 2,
+    aspect_ratio: "9:16",
+    resolution: "2k",
+    response_format: "url",
+  });
+  assert.equal(body.size, undefined);
+  assert.equal(body.quality, undefined);
+  assert.equal(body.style, undefined);
+});
+
+test("Grok Imagine multi-image continuation uses the official JSON edits endpoint", () => {
+  setTestSettings({
+    ...bananaSettings,
+    imageModel: "grok-imagine-image",
+    imageAspectRatio: "3:2",
+    imageQuality: "1k",
+    imageCount: 1,
+    imageEditEndpoint: "/v1/images/edits",
+  });
+  const references = ["A", "B"].map((suffix) => ({
+    name: `${suffix}.png`,
+    mime: "image/png",
+    dataUrl: `data:image/png;base64,${suffix}`,
+  }));
+  const request = buildImageRequest("继续修改", references, true);
+  const body = JSON.parse(request.body);
+
+  assert.equal(request.endpoint, "/v1/images/edits");
+  assert.deepEqual(body.images, references.map((reference) => ({ url: reference.dataUrl })));
+  assert.equal(body.aspect_ratio, "3:2");
+  assert.equal(body.resolution, "1k");
 });
 
 test("GPT Image 1.5 repairs legacy DALL-E dimensions", () => {

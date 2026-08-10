@@ -195,7 +195,7 @@ const VIDEO_DURATION_OPTIONS = [
   { value: "10", label: "10s" },
 ];
 
-const GROK_VIDEO_DURATIONS = [6, 10, 12, 16, 20];
+const GROK_VIDEO_DURATIONS = Array.from({ length: 15 }, (_, index) => index + 1);
 const MISSING_VIDEO_TASK_RETRY_LIMIT = 12;
 
 const VIDEO_STYLE_OPTIONS = [
@@ -792,7 +792,8 @@ async function runVisualMediaCacheWrite(key) {
     while (desiredMediaCacheWrites.has(key)) {
       const entry = desiredMediaCacheWrites.get(key);
       try {
-        const response = await fetch(entry.source);
+        const task = state.visualTasks.find((item) => item.id === entry.taskId);
+        const response = await fetchGeneratedMediaResource(entry.source, task);
         if (!response.ok) throw new Error(`媒体缓存读取失败：${response.status}`);
         const blob = await response.blob();
         if (!blob.size) throw new Error("媒体缓存内容为空");
@@ -1305,6 +1306,7 @@ function fillQuickModelSelect() {
 function renderOutputOptions() {
   const isVideo = state.settings.visualMode === "video";
   const usesPixelSize = usesPixelVideoSizeOptions(state.settings.videoModel);
+  const grokImageSelected = isGrokImagineImageModel(state.settings.imageModel);
   els.outputSettingsPopover.hidden = !outputPopoverOpen || activeMode !== "image";
   els.openOutputSettings.setAttribute("aria-expanded", String(outputPopoverOpen));
   els.imageOutputSettings.hidden = isVideo;
@@ -1318,9 +1320,18 @@ function renderOutputOptions() {
     ? "Veo 2 仅生成静音视频"
     : isVeoModel(state.settings.videoModel) ? "Veo 3 系列始终生成音频" : "";
 
+  const imageSizeRow = els.imageSizeGroup.closest(".setting-row");
+  const imageStyleRow = els.imageStyleGroup.closest(".setting-row");
+  if (imageSizeRow) imageSizeRow.hidden = grokImageSelected;
+  if (imageStyleRow) imageStyleRow.hidden = grokImageSelected;
   renderOptionGroup(els.imageAspectGroup, "imageAspectRatio", imageAspectOptionsForModel(), effectiveImageAspectRatio());
   renderOptionGroup(els.imageSizeGroup, "imageSize", imageSizeOptionsForModel(), effectiveImageOutputSize());
-  renderOptionGroup(els.imageQualityGroup, "imageQuality", imageQualityOptionsForModel(), state.settings.imageQuality);
+  renderOptionGroup(
+    els.imageQualityGroup,
+    "imageQuality",
+    imageQualityOptionsForModel(),
+    grokImageSelected ? grokImageResolution() : state.settings.imageQuality
+  );
   renderOptionGroup(els.imageStyleGroup, "imageStyle", imageStyleOptionsForModel(), state.settings.imageStyle);
   renderOptionGroup(els.videoAspectGroup, "videoAspectRatio", videoAspectOptionsForModel(), effectiveVideoAspectRatio());
   const videoAspectRow = els.videoAspectGroup.closest(".setting-row");
@@ -1328,13 +1339,13 @@ function renderOutputOptions() {
   const videoCountRow = els.videoCountGroup.closest(".setting-row");
   const videoStyleRow = els.videoStyleGroup.closest(".setting-row");
   const videoAudioRow = els.videoAudioToggle.closest(".toggle-row");
-  const usesMinimalGrokRequest = isGrokImagine15Model(state.settings.videoModel);
+  const usesOfficialGrokRequest = isGrokVideoModel(state.settings.videoModel);
   const videoAspectLabel = videoAspectRow?.querySelector(":scope > span");
   if (videoAspectLabel) videoAspectLabel.textContent = usesPixelSize ? "尺寸" : "比例";
-  if (videoResolutionRow) videoResolutionRow.hidden = usesPixelSize || usesMinimalGrokRequest;
+  if (videoResolutionRow) videoResolutionRow.hidden = usesPixelSize;
   if (videoCountRow) videoCountRow.hidden = !isSeedance2Model(state.settings.videoModel);
-  if (videoStyleRow) videoStyleRow.hidden = usesMinimalGrokRequest;
-  if (videoAudioRow) videoAudioRow.hidden = usesMinimalGrokRequest;
+  if (videoStyleRow) videoStyleRow.hidden = usesOfficialGrokRequest;
+  if (videoAudioRow) videoAudioRow.hidden = usesOfficialGrokRequest;
   renderOptionGroup(els.videoResolutionGroup, "videoResolution", videoResolutionOptionsForModel(), effectiveVideoResolution());
   renderOptionGroup(els.videoDurationGroup, "videoDuration", videoDurationOptionsForModel(), String(effectiveVideoDuration()));
   renderOptionGroup(
@@ -1357,6 +1368,12 @@ function renderOptionGroup(container, key, options, currentValue) {
 
 function imageSizeOptionsForModel() {
   const model = getModelProfile(state.settings.imageModel);
+  if (isGrokImagineImageModel(model?.id)) {
+    return [
+      { value: "1k", label: "1K" },
+      { value: "2k", label: "2K" },
+    ];
+  }
   if (model?.id === "dall-e-3") {
     return IMAGE_SIZE_OPTIONS.filter((option) => ["1024x1024", "1024x1792", "1792x1024"].includes(option.value));
   }
@@ -1398,6 +1415,9 @@ function imageSizeOptionsForModel() {
 }
 
 function imageAspectOptionsForModel(modelId = state.settings.imageModel) {
+  if (isGrokImagineImageModel(modelId)) {
+    return ["9:16", "16:9", "2:3", "3:2", "1:1"].map((value) => ({ value, label: value }));
+  }
   if (supportsGeminiNativeImageConfig(modelId)) {
     const id = String(modelId || "").toLowerCase();
     const ratios = /gemini-3\.1-flash-image/.test(id)
@@ -1419,6 +1439,12 @@ function effectiveImageAspectRatio(modelId = state.settings.imageModel) {
 
 function imageQualityOptionsForModel() {
   const model = getModelProfile(state.settings.imageModel);
+  if (isGrokImagineImageModel(model?.id)) {
+    return [
+      { value: "1k", label: "1K" },
+      { value: "2k", label: "2K" },
+    ];
+  }
   if (model?.id === "dall-e-3") {
     return IMAGE_QUALITY_OPTIONS.filter((option) => ["standard", "hd"].includes(option.value));
   }
@@ -1440,7 +1466,8 @@ function videoResolutionOptionsForModel() {
     return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["480p", "720p", "1080p", "4k"].includes(option.value));
   }
   if (isGrokVideoModel(modelId)) {
-    return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["480p", "720p"].includes(option.value));
+    const supported = isGrokImagine15Model(modelId) ? ["480p", "720p", "1080p"] : ["480p", "720p"];
+    return VIDEO_RESOLUTION_OPTIONS.filter((option) => supported.includes(option.value));
   }
   if (isVeoModel(modelId)) {
     let supported = ["720p", "1080p"];
@@ -1524,6 +1551,10 @@ function isGrokImagineVideoModel(modelId) {
   return /grok[-_.]?imagine[-_.]?video/i.test(String(modelId || ""));
 }
 
+function isGrokImagineImageModel(modelId) {
+  return /^grok[-_.]?imagine[-_.]?image(?:$|[-_.])/i.test(String(modelId || ""));
+}
+
 function isGrokVideoModel(modelId) {
   return /grok.*video|video.*grok/i.test(String(modelId || ""));
 }
@@ -1599,7 +1630,10 @@ function effectiveVideoResolution(modelId = state.settings.videoModel) {
   const resolution = state.settings.videoResolution;
   if (isSeedance2FastModel(modelId)) return ["480p", "720p"].includes(resolution) ? resolution : "720p";
   if (isSeedance2Model(modelId)) return ["480p", "720p", "1080p", "4k"].includes(resolution) ? resolution : "720p";
-  if (isGrokVideoModel(modelId)) return ["480p", "720p"].includes(resolution) ? resolution : "720p";
+  if (isGrokVideoModel(modelId)) {
+    const supported = isGrokImagine15Model(modelId) ? ["480p", "720p", "1080p"] : ["480p", "720p"];
+    return supported.includes(resolution) ? resolution : "720p";
+  }
   if (isVeo2Model(modelId) || isVeo31LiteModel(modelId)) return "720p";
   if (isVeo31Model(modelId)) return ["720p", "1080p", "4k"].includes(resolution) ? resolution : "720p";
   if (isVeoModel(modelId)) return ["720p", "1080p"].includes(resolution) ? resolution : "720p";
@@ -1631,10 +1665,7 @@ function effectiveVideoCount(modelId = state.settings.videoModel) {
 
 function normalizeGrokVideoDuration(value, modelId = state.settings.videoModel) {
   const duration = Number(value);
-  if (!Number.isFinite(duration)) return GROK_VIDEO_DURATIONS[0];
-  return GROK_VIDEO_DURATIONS.reduce((closest, option) => (
-    Math.abs(option - duration) < Math.abs(closest - duration) ? option : closest
-  ), GROK_VIDEO_DURATIONS[0]);
+  return Math.min(15, Math.max(1, Number.isFinite(duration) ? Math.round(duration) : 8));
 }
 
 function normalizeSora2Duration(value, modelId = state.settings.videoModel) {
@@ -2426,6 +2457,9 @@ function imageTaskParams(isEdit) {
 function buildImageRequest(prompt, references, isEdit) {
   const settings = state.settings;
   const model = getModelProfile(settings.imageModel);
+  if (isGrokImagineImageModel(settings.imageModel)) {
+    return buildGrokImageRequest(prompt, references, isEdit, model);
+  }
   const style = resolveImageApiStyle(model);
   if (style === "gemini") {
     return buildGeminiImageRequest(prompt, references, model);
@@ -2434,6 +2468,39 @@ function buildImageRequest(prompt, references, isEdit) {
     return buildOpenAIImageEditRequest(prompt, references);
   }
   return buildOpenAIImageGenerationRequest(prompt, model);
+}
+
+function buildGrokImageRequest(prompt, references, isEdit, model) {
+  const settings = state.settings;
+  const editing = isEdit && references.length > 0;
+  const payload = {
+    model: settings.imageModel,
+    prompt,
+    n: clampNumber(settings.imageCount, 1, 4, 1),
+    aspect_ratio: effectiveImageAspectRatio(settings.imageModel),
+    resolution: grokImageResolution(),
+    response_format: "url",
+  };
+  if (editing) {
+    const images = references.slice(0, 8).map((reference) => ({ url: reference.dataUrl }));
+    if (images.length === 1) payload.image = images[0];
+    else payload.images = images;
+  }
+  return {
+    label: `${model?.vendor || "xAI"} 图片${editing ? "编辑" : "生成"}`,
+    endpoint: editing
+      ? settings.imageEditEndpoint || DEFAULT_SETTINGS.imageEditEndpoint
+      : settings.imageEndpoint || DEFAULT_SETTINGS.imageEndpoint,
+    headers: authHeaders(),
+    body: JSON.stringify(payload),
+  };
+}
+
+function grokImageResolution() {
+  const quality = String(state.settings.imageQuality || "").toLowerCase();
+  if (["1k", "2k"].includes(quality)) return quality;
+  const size = String(state.settings.imageSize || "").toLowerCase();
+  return size === "2k" ? "2k" : "1k";
 }
 
 function buildOpenAIImageGenerationRequest(prompt, model) {
@@ -3019,10 +3086,9 @@ function buildSeedance20Content(prompt) {
 }
 
 function buildGrokVideoRequest(prompt, profile) {
-  const endpoint = videoGenerationEndpoint(profile);
-  return isGrokJsonVideoEndpoint(endpoint)
-    ? buildGrokJsonVideoRequest(prompt, profile, endpoint)
-    : buildGrokMultipartVideoRequest(prompt, profile, endpoint);
+  const video = draftMedia.videoReferences[0];
+  if (video?.dataUrl) return buildGrokVideoEditRequest(prompt, profile, video);
+  return buildGrokJsonVideoRequest(prompt, profile, videoGenerationEndpoint(profile));
 }
 
 function buildGrokTextVideoFallbackRequest(prompt, profile, request, errorMessage) {
@@ -3046,39 +3112,28 @@ function buildGrokJsonVideoRequest(prompt, profile, endpoint) {
     aspect_ratio: effectiveVideoAspectRatio(settings.videoModel),
     resolution: effectiveVideoResolution(settings.videoModel),
   };
-  const primaryImage = draftMedia.videoImages[0] || draftMedia.firstFrame || draftMedia.lastFrame;
+  const images = [draftMedia.firstFrame, ...draftMedia.videoImages, draftMedia.lastFrame].filter(Boolean);
+  const primaryImage = images[0];
   if (primaryImage) body.image = { url: primaryImage.dataUrl };
-  if (!isGrokImagine15Model(settings.videoModel)) {
-    const references = draftMedia.firstFrame ? draftMedia.videoImages : draftMedia.videoImages.slice(1);
-    if (references.length) body.reference_images = references.slice(0, 3).map((item) => ({ url: item.dataUrl }));
-  }
+  if (images.length > 1) body.reference_images = images.slice(1, 4).map((item) => ({ url: item.dataUrl }));
   return {
-    label: `${profile?.vendor || "xAI"} JSON 视频参数`,
+    label: `${profile?.vendor || "xAI"} 官方视频生成`,
     endpoint,
     headers: authHeaders(),
     body: JSON.stringify(body),
   };
 }
 
-function buildGrokMultipartVideoRequest(prompt, profile, endpoint) {
-  const settings = state.settings;
-  const form = new FormData();
-  form.append("model", settings.videoModel);
-  form.append("prompt", prompt);
-  form.append("size", effectiveVideoAspectRatio(settings.videoModel));
-  const duration = effectiveVideoDuration(settings.videoModel);
-  form.append("seconds", String(duration));
-  if (!isGrokImagine15Model(settings.videoModel)) {
-    form.append("duration", String(duration));
-    form.append("resolution", effectiveVideoResolution(settings.videoModel));
-  }
-  const reference = draftMedia.videoImages[0] || draftMedia.firstFrame || draftMedia.lastFrame;
-  if (reference?.file) form.append("input_reference", reference.file, reference.name);
+function buildGrokVideoEditRequest(prompt, profile, video) {
   return {
-    label: `${profile?.vendor || "Grok"} Multipart 视频参数`,
-    endpoint,
-    headers: rawAuthHeaders(),
-    body: form,
+    label: `${profile?.vendor || "xAI"} 官方视频编辑`,
+    endpoint: "/v1/videos/edits",
+    headers: authHeaders(),
+    body: JSON.stringify({
+      model: state.settings.videoModel,
+      prompt,
+      video: { url: video.dataUrl },
+    }),
   };
 }
 
@@ -3187,7 +3242,7 @@ function geminiVideoImage(item) {
 function videoGenerationEndpoint(profile) {
   const endpoint = state.settings.videoEndpoint || DEFAULT_SETTINGS.videoEndpoint;
   const defaultLike = !endpoint || endpoint === DEFAULT_SETTINGS.videoEndpoint;
-  if (profile?.provider === "xai" && defaultLike) return "/v1/videos";
+  if (profile?.provider === "xai" && (defaultLike || endpoint === "/v1/videos")) return "/v1/videos/generations";
   if (profile?.provider === "sora" && defaultLike) return "/v1/videos";
   if (profile?.provider === "seedance" && isSeedance20UnifiedModel(state.settings.videoModel)
       && !usesNewApiSeedance20Task(state.settings.videoModel) && defaultLike) {
@@ -3206,9 +3261,10 @@ function videoGenerationEndpoint(profile) {
 function videoTaskParams() {
   const settings = state.settings;
   const duration = effectiveVideoDuration(settings.videoModel);
-  if (isGrokImagine15Model(settings.videoModel)) {
+  if (isGrokVideoModel(settings.videoModel)) {
     return {
       aspectRatio: effectiveVideoAspectRatio(settings.videoModel),
+      resolution: effectiveVideoResolution(settings.videoModel),
       duration: `${duration}s`,
     };
   }
@@ -3290,9 +3346,7 @@ async function refreshVideoTaskOnce(task) {
   try {
     const endpointTemplate = videoStatusEndpointForTask(task);
     const endpoint = endpointTemplate.replace("{id}", encodeVideoTaskId(task.jobId, task));
-    const response = await fetch(apiUrl(endpoint), {
-      headers: videoStatusHeadersForTask(task),
-    });
+    const response = await fetchVideoTaskResource(apiUrl(endpoint), task);
     task.lastCheckedAt = Date.now();
     if (!response.ok) {
       task.lastPollError = await responseError(response);
@@ -3382,14 +3436,19 @@ function videoStatusEndpointForTask(task) {
 
 function videoStatusHeadersForTask(task) {
   if (task?.provider === "xai") {
-    return isGrokJsonVideoEndpoint(task.requestEndpoint) && !isDeepRouterBaseUrl()
-      ? authHeaders()
-      : { ...rawAuthHeaders(), "Content-Type": "application/json" };
+    return authHeaders();
   }
   if (task?.provider === "veo" && task.requestEndpoint === "/v1/videos") {
     return rawAuthHeaders();
   }
   return authHeaders(false);
+}
+
+async function fetchVideoTaskResource(url, task) {
+  let response = await fetch(url, { headers: videoStatusHeadersForTask(task) });
+  if (![401, 403].includes(response.status) || task?.provider !== "xai" || !isDeepRouterBaseUrl()) return response;
+  response = await fetch(url, { headers: { ...rawAuthHeaders(), "Content-Type": "application/json" } });
+  return response;
 }
 
 function encodeVideoTaskId(jobId, task) {
@@ -3795,9 +3854,19 @@ async function continueFromImageToVideo(taskId, src) {
 }
 
 async function generatedResultToMedia(src, type, task) {
-  const response = await fetch(src);
-  if (!response.ok) throw new Error(`读取生成结果失败：${response.status}`);
-  const blob = await response.blob();
+  let blob = await cachedGeneratedMediaBlob(src, task);
+  if (!blob) {
+    let response;
+    try {
+      response = await fetchGeneratedMediaResource(src, task);
+    } catch (error) {
+      const remoteMedia = generatedResultUrlMedia(src, type, task);
+      if (remoteMedia) return remoteMedia;
+      throw error;
+    }
+    if (!response.ok) throw new Error(`读取生成结果失败：${response.status}`);
+    blob = await response.blob();
+  }
   if (!blob.size) throw new Error("生成结果内容为空");
   if (blob.type === "text/html") throw new Error("生成结果地址已失效");
   if (blob.size > 100 * 1024 * 1024) throw new Error("生成结果超过 100MB，无法作为参考素材");
@@ -3807,6 +3876,60 @@ async function generatedResultToMedia(src, type, task) {
   const name = `${type === "video" ? "video" : "image"}-${String(task.id || Date.now()).slice(-8)}.${extension}`;
   const file = new File([blob], name, { type: mime });
   return readMediaFile(file);
+}
+
+function generatedResultUrlMedia(src, type, task) {
+  if (isApiResourceUrl(src)) return null;
+  try {
+    const url = new URL(String(src || ""));
+    if (!["http:", "https:"].includes(url.protocol)) return null;
+    const mime = type === "video" ? "video/mp4" : "image/png";
+    const extension = mediaExtension(mime, type);
+    return {
+      id: generateId(),
+      name: `${type === "video" ? "video" : "image"}-${String(task?.id || Date.now()).slice(-8)}.${extension}`,
+      mime,
+      size: 0,
+      dataUrl: url.href,
+      sourceUrl: url.href,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function cachedGeneratedMediaBlob(src, task) {
+  if (typeof indexedDB === "undefined" || !task?.id) return null;
+  let index = (task.media || []).indexOf(src);
+  if (index < 0) index = (task.mediaSourceUrls || []).indexOf(src);
+  if (index < 0) return null;
+  const key = task.mediaCacheKeys?.[index] || visualMediaCacheKey(task.id, index);
+  try {
+    return await getVisualMediaCache(key);
+  } catch {
+    return null;
+  }
+}
+
+async function fetchGeneratedMediaResource(src, task) {
+  if (task?.type === "video" && task?.provider === "xai" && isApiResourceUrl(src)) {
+    return fetchVideoTaskResource(apiUrl(src), task);
+  }
+  const options = isApiResourceUrl(src) ? { headers: authHeaders(false) } : undefined;
+  return fetch(src, options);
+}
+
+function isApiResourceUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    const base = new URL(normalizeApiBaseUrl(state.settings.baseUrl) || DEFAULT_API_BASE_URL);
+    const hostname = (host) => String(host || "").replace(/^www\./i, "").toLowerCase();
+    return hostname(url.hostname) === hostname(base.hostname)
+      && url.protocol === base.protocol
+      && url.port === base.port;
+  } catch {
+    return false;
+  }
 }
 
 function mediaExtension(mime, type) {
@@ -4366,7 +4489,7 @@ async function testConnection() {
   const connection = settingsConnectionValues();
   if (!validateSettingsConnection(connection)) return;
   setSettingsActionLoading(els.testConnection, true, "测试中");
-  setConnection("测试中", "", "正在连接 /v1/models...");
+  setConnection("测试中", "", "正在验证 /v1/models；不会调用推理模型...");
   try {
     const response = await fetch(apiUrlForBase(connection.baseUrl, "/v1/models"), {
       headers: authHeadersForKey(connection.apiKey, false),
@@ -4374,9 +4497,9 @@ async function testConnection() {
     if (!response.ok) throw new Error(await responseError(response));
     const data = await response.json();
     const count = Array.isArray(data?.data) ? data.data.length : 0;
-    setConnection("连接成功", "ok", `服务响应正常，可读取 ${count} 个模型。`);
+    setConnection("连接成功", "ok", `服务响应正常，可读取 ${count} 个模型；本测试未调用任何推理模型。`);
   } catch (error) {
-    setConnection("连接失败", "error", normalizeError(error));
+    setConnection("连接失败", "error", `${normalizeError(error)}；测试结果不影响保存，可在“模型设置”切换已有模型。`);
   } finally {
     setSettingsActionLoading(els.testConnection, false);
   }
@@ -4651,7 +4774,7 @@ function videoResultUrlsForTask(data, task) {
   if (media.length) return media;
   const status = String(extractTaskStatus(data) || "").toLowerCase();
   const completed = ["succeeded", "success", "completed", "complete", "finished", "done"].includes(status);
-  if (!completed || task?.provider !== "xai" || !task?.jobId) return [];
+  if (!completed || task?.provider !== "xai" || !task?.jobId || !isDeepRouterBaseUrl()) return [];
   const id = encodeVideoTaskId(task.jobId, task);
   return [apiUrl(`/v1/videos/${id}/content`)];
 }
@@ -4659,9 +4782,7 @@ function videoResultUrlsForTask(data, task) {
 async function materializeVideoUrls(urls, task) {
   return Promise.all((urls || []).map(async (source, index) => {
     if (!isAuthenticatedVideoProxyUrl(source)) return source;
-    const response = await fetch(apiUrl(source), {
-      headers: videoStatusHeadersForTask(task),
-    });
+    const response = await fetchVideoTaskResource(apiUrl(source), task);
     if (!response.ok) throw new Error(`视频结果下载失败：${await responseError(response)}`);
     const contentType = String(response.headers.get("content-type") || "").toLowerCase();
     if (contentType.includes("application/json") || contentType.startsWith("text/")) {
@@ -4699,6 +4820,8 @@ function isAuthenticatedVideoProxyUrl(value) {
     const base = new URL(normalizeApiBaseUrl(state.settings.baseUrl) || DEFAULT_API_BASE_URL);
     const hostname = (host) => String(host || "").replace(/^www\./i, "").toLowerCase();
     return hostname(url.hostname) === hostname(base.hostname)
+      && url.protocol === base.protocol
+      && url.port === base.port
       && /^\/v1\/videos\/[^/]+\/content\/?$/i.test(url.pathname);
   } catch {
     return false;
@@ -5087,6 +5210,7 @@ function effectiveImageSize() {
 function effectiveImageOutputSize(modelId = state.settings.imageModel) {
   const profile = getModelProfile(modelId);
   if (profile?.provider === "gemini") return geminiNativeImageSize();
+  if (isGrokImagineImageModel(modelId)) return grokImageResolution();
   return imageRequestSize(modelId);
 }
 
@@ -5323,14 +5447,18 @@ if (typeof module !== "undefined" && module.exports) {
     extractJobId,
     extractTaskStatus,
     extractVideoUrls,
+    fetchVideoTaskResource,
+    generatedResultToMedia,
     materializeVideoUrls,
     videoResultUrlsForTask,
+    imageAspectOptionsForModel,
     imageSizeOptionsForModel,
     imageQualityOptionsForModel,
     imageStyleOptionsForModel,
     imagePromptWithSelectedStyle,
     imageGenerationModeForReferences,
     isGptImage2Model,
+    isGrokImagineImageModel,
     isGrokImagine15Model,
     isGrokImagineVideoModel,
     isSeedance2FastModel,
