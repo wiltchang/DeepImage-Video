@@ -12,6 +12,7 @@ global.document = {
 };
 
 const {
+  apiUrlForBase,
   buildGrokTextVideoFallbackRequest,
   buildVideoRequest,
   encodeVideoTaskId,
@@ -59,6 +60,63 @@ function buildVideo(model, provider, overrides = {}, draft = {}) {
   const vendor = provider === "veo" ? "Google" : provider === "sora" ? "OpenAI" : "xAI";
   return buildVideoRequest("测试视频提示词", { id: model, provider, vendor });
 }
+
+test("LinkMesh API URLs use the same-origin proxy without duplicating v1", () => {
+  assert.equal(apiUrlForBase("https://ai.linkmesh.org", "/v1/models"), "/__linkmesh/v1/models");
+  assert.equal(apiUrlForBase("https://ai.linkmesh.org/v1", "/v1/models"), "/__linkmesh/v1/models");
+  assert.equal(
+    apiUrlForBase("https://ai.linkmesh.org", "https://ai.linkmesh.org/v1/videos/task_123/content"),
+    "/__linkmesh/v1/videos/task_123/content"
+  );
+  assert.equal(
+    apiUrlForBase("https://deeprouter.top", "https://cdn.example.com/result.mp4"),
+    "https://cdn.example.com/result.mp4"
+  );
+});
+
+test("LinkMesh Grok video creation and status requests stay on official xAI paths", () => {
+  const request = buildVideo("grok-imagine-video", "xai", {
+    baseUrl: "https://ai.linkmesh.org",
+    videoAspectRatio: "3:2",
+    videoDuration: 8,
+  });
+  assert.equal(apiUrlForBase("https://ai.linkmesh.org", request.endpoint), "/__linkmesh/v1/videos/generations");
+  assert.equal(
+    apiUrlForBase("https://ai.linkmesh.org", videoStatusEndpointForTask({
+      provider: "xai",
+      requestEndpoint: request.endpoint,
+    }).replace("{id}", "request-id")),
+    "/__linkmesh/v1/videos/request-id"
+  );
+  assert.equal(JSON.parse(request.body).aspect_ratio, "3:2");
+});
+
+test("relative LinkMesh Grok video results are proxied and downloaded with authorization", async () => {
+  setTestSettings({ baseUrl: "https://ai.linkmesh.org", apiKey: "test-key" });
+  assert.deepEqual(extractVideoUrls({ status: "done", url: "/v1/videos/request-id/content" }), [
+    "/__linkmesh/v1/videos/request-id/content",
+  ]);
+
+  const originalFetch = global.fetch;
+  let receivedHeaders;
+  global.fetch = async (url, options = {}) => {
+    assert.equal(url, "/__linkmesh/v1/videos/request-id/content");
+    receivedHeaders = options.headers;
+    return new Response(new Blob(["video-content"], { type: "video/mp4" }), {
+      status: 200,
+      headers: { "Content-Type": "video/mp4" },
+    });
+  };
+  try {
+    const task = { id: "linkmesh-task", provider: "xai", requestEndpoint: "/v1/videos/generations" };
+    const result = await materializeVideoUrls(["/__linkmesh/v1/videos/request-id/content"], task);
+    assert.equal(receivedHeaders.Authorization, "Bearer test-key");
+    assert.match(result[0], /^blob:/);
+    URL.revokeObjectURL(result[0]);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
 
 test("Grok Imagine 1.5 uses the official JSON generation endpoint", () => {
   const request = buildVideo("grok-imagine-video-1.5-preview", "xai", {

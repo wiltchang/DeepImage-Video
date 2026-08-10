@@ -15,13 +15,18 @@ const {
   buildVideoRequest,
   effectiveVideoAspectRatio,
   effectiveVideoCount,
+  effectiveVideoDuration,
   effectiveVideoResolution,
   isSeedance2Model,
   isSeedance2FastModel,
+  isSeedance25Model,
   isSeedance20UnifiedModel,
   normalizeSeedDanceDuration,
   setTestDraftMedia,
   setTestSettings,
+  videoAspectOptionsForModel,
+  videoDurationOptionsForModel,
+  videoResolutionOptionsForModel,
   videoStatusEndpointForTask,
 } = require("../app.js");
 
@@ -216,4 +221,84 @@ test("Seedance 2.0 generation count supports 1 through 8 without affecting other
 
   setTestSettings({ videoModel: "grok-video-3", videoCount: 8 });
   assert.equal(effectiveVideoCount(), 1);
+});
+
+test("Seedance 2.5 exposes the official resolution, ratio, and duration ranges", () => {
+  const model = "doubao-seedance-2-5-260628";
+  build(model, { videoResolution: "720p", videoAspectRatio: "adaptive", videoDuration: -1 });
+
+  assert.equal(isSeedance25Model(model), true);
+  assert.deepEqual(videoResolutionOptionsForModel().map((option) => option.value), ["480p", "720p"]);
+  assert.deepEqual(videoAspectOptionsForModel().map((option) => option.value), [
+    "adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16",
+  ]);
+  assert.deepEqual(videoDurationOptionsForModel().map((option) => option.value), [
+    "-1",
+    ...Array.from({ length: 27 }, (_, index) => String(index + 4)),
+  ]);
+  assert.equal(normalizeSeedDanceDuration(-1, model), -1);
+  assert.equal(normalizeSeedDanceDuration(1, model), 4);
+  assert.equal(normalizeSeedDanceDuration(31, model), 30);
+});
+
+test("Seedance 2.5 sends router and official parameters without unsupported quality values", () => {
+  const request = build("doubao-seedance-2-5-260628", {
+    videoResolution: "1080p",
+    videoAspectRatio: "3:4",
+    videoDuration: 30,
+    videoAudio: true,
+  });
+  const body = JSON.parse(request.body);
+
+  assert.equal(request.endpoint, "/v1/video/generations");
+  assert.equal(body.model, "doubao-seedance-2-5-260628");
+  assert.equal(body.prompt, "测试视频提示词");
+  assert.deepEqual(body.content, [{ type: "text", text: "测试视频提示词" }]);
+  assert.equal(body.duration, 30);
+  assert.equal(body.ratio, "3:4");
+  assert.equal(body.resolution, "720p");
+  assert.equal(body.metadata.duration, 30);
+  assert.equal(body.metadata.ratio, "3:4");
+  assert.equal(body.metadata.resolution, "720p");
+});
+
+test("Seedance 2.5 applies official adaptive media restrictions", () => {
+  const image = {
+    name: "first.png",
+    mime: "image/png",
+    dataUrl: "data:image/png;base64,YWJjZA==",
+  };
+  const imageBody = JSON.parse(build("doubao-seedance-2-5-260628", {
+    videoAspectRatio: "16:9",
+    videoDuration: 12,
+    draftMedia: { firstFrame: image },
+  }).body);
+  assert.equal(imageBody.ratio, "adaptive");
+  assert.equal(imageBody.duration, 12);
+  assert.equal(effectiveVideoAspectRatio(), "adaptive");
+  assert.equal(effectiveVideoDuration(), 12);
+
+  const videoBody = JSON.parse(build("doubao-seedance-2-5-260628", {
+    videoAspectRatio: "16:9",
+    videoDuration: 12,
+    draftMedia: {
+      videoReferences: [{
+        name: "source.mp4",
+        mime: "video/mp4",
+        dataUrl: "data:video/mp4;base64,YWJjZA==",
+      }],
+    },
+  }).body);
+  assert.equal(videoBody.ratio, "adaptive");
+  assert.equal(videoBody.duration, -1);
+  assert.equal(effectiveVideoAspectRatio(), "adaptive");
+  assert.equal(effectiveVideoDuration(), -1);
+});
+
+test("Seedance 2.5 generation count supports 1 through 8", () => {
+  setTestSettings({ videoModel: "doubao-seedance-2-5-260628", videoCount: 8 });
+  assert.equal(effectiveVideoCount(), 8);
+
+  setTestSettings({ videoModel: "doubao-seedance-2-5-260628", videoCount: 12 });
+  assert.equal(effectiveVideoCount(), 8);
 });

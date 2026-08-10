@@ -2,6 +2,8 @@ const STORAGE_KEY = "yhshu_online_client_state_v1";
 const EXPORT_VERSION = 2;
 const DEFAULT_API_BASE_URL = "https://deeprouter.top";
 const LEGACY_DEFAULT_API_BASE_URLS = new Set(["https://www.yhshu.ai"]);
+const LINKMESH_API_HOST = "ai.linkmesh.org";
+const LINKMESH_PROXY_PREFIX = "/__linkmesh";
 const MEDIA_CACHE_DB_NAME = "yhshu_visual_media_cache";
 const MEDIA_CACHE_STORE = "visual_media";
 const MEDIA_CACHE_VERSION = 1;
@@ -1343,7 +1345,10 @@ function renderOutputOptions() {
   const videoAspectLabel = videoAspectRow?.querySelector(":scope > span");
   if (videoAspectLabel) videoAspectLabel.textContent = usesPixelSize ? "尺寸" : "比例";
   if (videoResolutionRow) videoResolutionRow.hidden = usesPixelSize;
-  if (videoCountRow) videoCountRow.hidden = !isSeedance2Model(state.settings.videoModel);
+  if (videoCountRow) {
+    videoCountRow.hidden = !isSeedance2Model(state.settings.videoModel)
+      && !isSeedance25Model(state.settings.videoModel);
+  }
   if (videoStyleRow) videoStyleRow.hidden = usesOfficialGrokRequest;
   if (videoAudioRow) videoAudioRow.hidden = usesOfficialGrokRequest;
   renderOptionGroup(els.videoResolutionGroup, "videoResolution", videoResolutionOptionsForModel(), effectiveVideoResolution());
@@ -1459,6 +1464,9 @@ function imageQualityOptionsForModel() {
 
 function videoResolutionOptionsForModel() {
   const modelId = state.settings.videoModel;
+  if (isSeedance25Model(modelId)) {
+    return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["480p", "720p"].includes(option.value));
+  }
   if (isSeedance2FastModel(modelId)) {
     return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["480p", "720p"].includes(option.value));
   }
@@ -1486,7 +1494,7 @@ function videoAspectOptionsForModel() {
   if (usesDeepRouterVeoCompatibility(modelId)) {
     return ["1920x1080", "1080x1920"].map((value) => ({ value, label: value }));
   }
-  if (isSeedance2Model(modelId)) {
+  if (isSeedance2Model(modelId) || isSeedance25Model(modelId)) {
     return ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]
       .map((value) => ({ value, label: value === "adaptive" ? "自适应" : value }));
   }
@@ -1517,6 +1525,13 @@ function videoDurationOptionsForModel() {
     const durations = isVeo2Model(modelId) ? [5, 6, 8] : [4, 6, 8];
     return durations.map((seconds) => ({ value: String(seconds), label: `${seconds}s` }));
   }
+  if (isSeedance25Model(modelId)) {
+    const options = Array.from({ length: 27 }, (_, index) => {
+      const seconds = String(index + 4);
+      return { value: seconds, label: `${seconds}s` };
+    });
+    return [{ value: "-1", label: "自动" }, ...options];
+  }
   if (!isSeedance2Model(modelId)) return VIDEO_DURATION_OPTIONS;
   const unified = isSeedance20UnifiedModel(modelId);
   const minimum = unified ? 4 : 5;
@@ -1533,6 +1548,10 @@ function isSeedanceModel(modelId) {
 
 function isSeedance2Model(modelId) {
   return /seedance.*2[-_.]?0/i.test(String(modelId || ""));
+}
+
+function isSeedance25Model(modelId) {
+  return /seedance.*2[-_.]?5/i.test(String(modelId || ""));
 }
 
 function isSeedance2FastModel(modelId) {
@@ -1613,7 +1632,8 @@ function effectiveVideoAspectRatio(modelId = state.settings.videoModel) {
     if (["1920x1080", "1080x1920"].includes(ratio)) return ratio;
     return ratio === "9:16" ? "1080x1920" : "1920x1080";
   }
-  if (isSeedance2Model(modelId)) {
+  if (isSeedance25Model(modelId) && hasSeedance25MediaInputs()) return "adaptive";
+  if (isSeedance2Model(modelId) || isSeedance25Model(modelId)) {
     return ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].includes(ratio) ? ratio : "16:9";
   }
   if (isSeedanceModel(modelId)) {
@@ -1628,6 +1648,7 @@ function effectiveVideoAspectRatio(modelId = state.settings.videoModel) {
 
 function effectiveVideoResolution(modelId = state.settings.videoModel) {
   const resolution = state.settings.videoResolution;
+  if (isSeedance25Model(modelId)) return ["480p", "720p"].includes(resolution) ? resolution : "720p";
   if (isSeedance2FastModel(modelId)) return ["480p", "720p"].includes(resolution) ? resolution : "720p";
   if (isSeedance2Model(modelId)) return ["480p", "720p", "1080p", "4k"].includes(resolution) ? resolution : "720p";
   if (isGrokVideoModel(modelId)) {
@@ -1643,16 +1664,20 @@ function effectiveVideoResolution(modelId = state.settings.videoModel) {
 function normalizeSeedDanceDuration(value, modelId = state.settings.videoModel) {
   const duration = Number(value);
   const unified = isSeedance20UnifiedModel(modelId);
-  if (isSeedance2Model(modelId) && duration === -1) return -1;
-  const fallback = isSeedance2Model(modelId) ? 5 : 4;
-  const minimum = unified ? 4 : isSeedance2Model(modelId) ? 5 : 1;
-  const maximum = isSeedance2Model(modelId) ? 15 : 30;
+  const seedance25 = isSeedance25Model(modelId);
+  if ((isSeedance2Model(modelId) || seedance25) && duration === -1) return -1;
+  const fallback = seedance25 ? 4 : isSeedance2Model(modelId) ? 5 : 4;
+  const minimum = unified || seedance25 ? 4 : isSeedance2Model(modelId) ? 5 : 1;
+  const maximum = seedance25 ? 30 : isSeedance2Model(modelId) ? 15 : 30;
   return Math.min(maximum, Math.max(minimum, Number.isFinite(duration) ? Math.round(duration) : fallback));
 }
 
 function effectiveVideoDuration(modelId = state.settings.videoModel) {
   const profile = getModelProfile(modelId);
-  if (profile?.provider === "seedance") return normalizeSeedDanceDuration(state.settings.videoDuration, modelId);
+  if (profile?.provider === "seedance") {
+    if (isSeedance25Model(modelId) && draftMedia.videoReferences.length) return -1;
+    return normalizeSeedDanceDuration(state.settings.videoDuration, modelId);
+  }
   if (isSora2Model(modelId)) return normalizeSora2Duration(state.settings.videoDuration, modelId);
   if (isGrokVideoModel(modelId)) return normalizeGrokVideoDuration(state.settings.videoDuration, modelId);
   if (isVeoModel(modelId)) return normalizeVeoDuration(state.settings.videoDuration, modelId);
@@ -1660,7 +1685,9 @@ function effectiveVideoDuration(modelId = state.settings.videoModel) {
 }
 
 function effectiveVideoCount(modelId = state.settings.videoModel) {
-  return isSeedance2Model(modelId) ? clampNumber(state.settings.videoCount, 1, 8, 1) : 1;
+  return isSeedance2Model(modelId) || isSeedance25Model(modelId)
+    ? clampNumber(state.settings.videoCount, 1, 8, 1)
+    : 1;
 }
 
 function normalizeGrokVideoDuration(value, modelId = state.settings.videoModel) {
@@ -2995,12 +3022,33 @@ function buildVideoRequest(prompt, profile) {
 function buildSeedDanceVideoRequest(prompt, profile) {
   const settings = state.settings;
   const modelId = settings.videoModel;
-  const duration = normalizeSeedDanceDuration(settings.videoDuration, modelId);
+  const seedance25 = isSeedance25Model(modelId);
+  const duration = effectiveVideoDuration(modelId);
   const automaticDuration = duration === -1;
   const ratio = effectiveVideoAspectRatio(modelId);
   const resolution = effectiveVideoResolution(modelId);
   const useNewApiTask = usesNewApiSeedance20Task(modelId);
-  const body = useNewApiTask
+  const content = seedance25 ? buildSeedance20Content(prompt) : null;
+  const body = seedance25
+    ? {
+        model: modelId,
+        prompt,
+        content,
+        duration,
+        ratio,
+        resolution,
+        generate_audio: effectiveVideoAudio(modelId),
+        watermark: false,
+        metadata: {
+          content,
+          duration,
+          ratio,
+          resolution,
+          generate_audio: effectiveVideoAudio(modelId),
+          watermark: false,
+        },
+      }
+    : useNewApiTask
     ? {
         model: modelId,
         prompt,
@@ -3049,13 +3097,23 @@ function buildSeedDanceVideoRequest(prompt, profile) {
         },
       };
   const references = buildVideoReferences();
-  if (!isSeedance20UnifiedModel(modelId) && references.length) body.references = references;
+  if (!isSeedance20UnifiedModel(modelId) && !seedance25 && references.length) body.references = references;
   return {
     label: `${profile?.vendor || "SeedDance"} 视频参数`,
     endpoint: videoGenerationEndpoint(profile),
     headers: authHeaders(),
     body: JSON.stringify(body),
   };
+}
+
+function hasSeedance25MediaInputs() {
+  return Boolean(
+    draftMedia.firstFrame
+      || draftMedia.lastFrame
+      || draftMedia.videoImages.length
+      || draftMedia.videoReferences.length
+      || draftMedia.audio
+  );
 }
 
 function buildSeedance20Content(prompt) {
@@ -3272,7 +3330,9 @@ function videoTaskParams() {
     aspectRatio: effectiveVideoAspectRatio(settings.videoModel),
     resolution: effectiveVideoResolution(settings.videoModel),
     duration: duration === -1 ? "自动" : `${duration}s`,
-    count: isSeedance2Model(settings.videoModel) ? effectiveVideoCount(settings.videoModel) : undefined,
+    count: isSeedance2Model(settings.videoModel) || isSeedance25Model(settings.videoModel)
+      ? effectiveVideoCount(settings.videoModel)
+      : undefined,
     style: settings.videoStyle,
     audio: effectiveVideoAudio(settings.videoModel) ? "开" : "关",
   };
@@ -3920,6 +3980,7 @@ async function fetchGeneratedMediaResource(src, task) {
 }
 
 function isApiResourceUrl(value) {
+  if (isLinkMeshProxyPath(value)) return true;
   try {
     const url = new URL(String(value || ""));
     const base = new URL(normalizeApiBaseUrl(state.settings.baseUrl) || DEFAULT_API_BASE_URL);
@@ -4572,10 +4633,28 @@ function apiUrl(path) {
 function apiUrlForBase(baseUrl, path) {
   const base = normalizeApiBaseUrl(baseUrl);
   if (!base) throw new Error("API Base URL 不能为空");
-  if (/^https?:\/\//i.test(path)) return path;
-  if (base.endsWith("/v1") && path.startsWith("/v1/")) return `${base}${path.slice(3)}`;
-  if (base.endsWith("/v1") && path.startsWith("/v1beta/")) return `${base.slice(0, -3)}${path}`;
-  return `${base}${path}`;
+  if (isLinkMeshProxyPath(path)) return path;
+  let target = path;
+  if (!/^https?:\/\//i.test(path)) {
+    if (base.endsWith("/v1") && path.startsWith("/v1/")) target = `${base}${path.slice(3)}`;
+    else if (base.endsWith("/v1") && path.startsWith("/v1beta/")) target = `${base.slice(0, -3)}${path}`;
+    else target = `${base}${path}`;
+  }
+  return linkMeshProxyUrl(target) || target;
+}
+
+function linkMeshProxyUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    if (url.hostname.toLowerCase() !== LINKMESH_API_HOST) return "";
+    return `${LINKMESH_PROXY_PREFIX}${url.pathname}${url.search}`;
+  } catch {
+    return "";
+  }
+}
+
+function isLinkMeshProxyPath(value) {
+  return String(value || "").startsWith(`${LINKMESH_PROXY_PREFIX}/`);
 }
 
 function normalizeApiBaseUrl(value) {
@@ -4815,6 +4894,9 @@ async function materializeVideoUrls(urls, task) {
 }
 
 function isAuthenticatedVideoProxyUrl(value) {
+  if (isLinkMeshProxyPath(value)) {
+    return /^\/__linkmesh\/v1\/videos\/[^/]+\/content\/?$/i.test(String(value));
+  }
   try {
     const url = new URL(String(value || ""));
     const base = new URL(normalizeApiBaseUrl(state.settings.baseUrl) || DEFAULT_API_BASE_URL);
@@ -5435,6 +5517,7 @@ if (typeof module !== "undefined" && module.exports) {
     buildVideoRequest,
     buildVideoReferences,
     buildImageRequest,
+    apiUrlForBase,
     effectiveImageAspectRatio,
     effectiveVideoAspectRatio,
     effectiveVideoAudio,
@@ -5463,6 +5546,7 @@ if (typeof module !== "undefined" && module.exports) {
     isGrokImagineVideoModel,
     isSeedance2FastModel,
     isSeedance2Model,
+    isSeedance25Model,
     isSeedance20UnifiedModel,
     isSora2Model,
     isSora2ProModel,

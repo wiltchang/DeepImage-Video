@@ -196,6 +196,22 @@ test("Grok Imagine image generation uses official aspect ratio and resolution fi
   assert.equal(body.style, undefined);
 });
 
+test("LinkMesh Grok image generation preserves every selected official ratio", () => {
+  ["9:16", "16:9", "2:3", "3:2", "1:1"].forEach((ratio) => {
+    setTestSettings({
+      ...bananaSettings,
+      baseUrl: "https://ai.linkmesh.org",
+      imageModel: "grok-imagine-image",
+      imageAspectRatio: ratio,
+      imageQuality: "1k",
+      imageCount: 1,
+    });
+    const body = JSON.parse(buildImageRequest("比例测试", [], false).body);
+    assert.equal(body.aspect_ratio, ratio);
+    assert.equal(body.resolution, "1k");
+  });
+});
+
 test("Grok Imagine multi-image continuation uses the official JSON edits endpoint", () => {
   setTestSettings({
     ...bananaSettings,
