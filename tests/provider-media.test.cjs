@@ -517,7 +517,7 @@ test("third-party Grok 3 models use the documented multipart video contract", ()
       videoEndpoint: "/v1/videos/generations",
       videoAspectRatio: "9:16",
       videoResolution: "720p",
-      videoDuration: 20,
+      videoDuration: 15,
     });
 
     assert.equal(request.endpoint, "/v1/videos");
@@ -526,7 +526,7 @@ test("third-party Grok 3 models use the documented multipart video contract", ()
     assert.equal(request.body.get("model"), model);
     assert.equal(request.body.get("prompt"), "测试视频提示词");
     assert.equal(request.body.get("size"), "9:16");
-    assert.equal(request.body.get("seconds"), "20");
+    assert.equal(request.body.get("seconds"), "15");
     assert.equal(request.body.get("duration"), null);
     assert.equal(request.body.get("resolution"), null);
   });
@@ -536,19 +536,20 @@ test("third-party Grok 3 models use the documented multipart video contract", ()
   assert.equal(videoStatusHeadersForTask(task).Authorization, "test-key");
 });
 
-test("third-party Grok 3 durations are normalized to channel-supported values", () => {
+test("third-party Grok 3 models support every duration from 1 through 15 seconds", () => {
   setTestSettings({ videoModel: "grok-video-3-pro" });
   assert.deepEqual(
     videoDurationOptionsForModel().map((option) => option.value),
-    ["6", "10", "12", "16", "20"]
+    Array.from({ length: 15 }, (_, index) => String(index + 1))
   );
 
   const values = [
-    [1, "6"],
-    [8, "10"],
+    [0, "1"],
+    [1, "1"],
+    [8, "8"],
     [12, "12"],
-    [15, "16"],
-    [20, "20"],
+    [15, "15"],
+    [20, "15"],
   ];
   values.forEach(([input, expected]) => {
     const request = buildVideo("grok-video-3-pro", "xai", { videoDuration: input });
@@ -561,7 +562,7 @@ test("third-party Grok 3 durations are normalized to channel-supported values", 
     videoDuration: 15,
   });
   assert.equal(repaired.body.get("size"), "16:9");
-  assert.equal(repaired.body.get("seconds"), "16");
+  assert.equal(repaired.body.get("seconds"), "15");
 });
 
 test("official Grok Imagine video models keep the JSON generation contract", () => {

@@ -200,7 +200,6 @@ const VIDEO_DURATION_OPTIONS = [
 ];
 
 const GROK_VIDEO_DURATIONS = Array.from({ length: 15 }, (_, index) => index + 1);
-const THIRD_PARTY_GROK_VIDEO_DURATIONS = [6, 10, 12, 16, 20];
 const MISSING_VIDEO_TASK_RETRY_LIMIT = 12;
 
 const VIDEO_STYLE_OPTIONS = [
@@ -1536,10 +1535,7 @@ function videoDurationOptionsForModel() {
     return [{ value: "12", label: "12s" }];
   }
   if (isGrokVideoModel(modelId)) {
-    const durations = isThirdPartyGrokVideoModel(modelId)
-      ? THIRD_PARTY_GROK_VIDEO_DURATIONS
-      : GROK_VIDEO_DURATIONS;
-    return durations.map((seconds) => ({ value: String(seconds), label: `${seconds}s` }));
+    return GROK_VIDEO_DURATIONS.map((seconds) => ({ value: String(seconds), label: `${seconds}s` }));
   }
   if (usesDeepRouterVeoCompatibility(modelId)) {
     return [{ value: "8", label: "8s" }];
@@ -1729,13 +1725,6 @@ function effectiveVideoCount(modelId = state.settings.videoModel) {
 
 function normalizeGrokVideoDuration(value, modelId = state.settings.videoModel) {
   const duration = Number(value);
-  if (isThirdPartyGrokVideoModel(modelId)) {
-    const fallback = /^grok[-_.]video[-_.]3[-_.](?:max|pro)$/i.test(String(modelId || "")) ? 10 : 6;
-    if (!Number.isFinite(duration)) return fallback;
-    return THIRD_PARTY_GROK_VIDEO_DURATIONS.reduce((closest, option) => (
-      Math.abs(option - duration) < Math.abs(closest - duration) ? option : closest
-    ), fallback);
-  }
   return Math.min(15, Math.max(1, Number.isFinite(duration) ? Math.round(duration) : 8));
 }
 
