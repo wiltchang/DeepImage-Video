@@ -200,6 +200,7 @@ const VIDEO_DURATION_OPTIONS = [
 ];
 
 const GROK_VIDEO_DURATIONS = Array.from({ length: 15 }, (_, index) => index + 1);
+const THIRD_PARTY_GROK_VIDEO_DURATIONS = [6, 10, 12, 16, 20];
 const MISSING_VIDEO_TASK_RETRY_LIMIT = 12;
 
 const VIDEO_STYLE_OPTIONS = [
@@ -1535,7 +1536,10 @@ function videoDurationOptionsForModel() {
     return [{ value: "12", label: "12s" }];
   }
   if (isGrokVideoModel(modelId)) {
-    return GROK_VIDEO_DURATIONS.map((seconds) => ({ value: String(seconds), label: `${seconds}s` }));
+    const durations = isThirdPartyGrokVideoModel(modelId)
+      ? THIRD_PARTY_GROK_VIDEO_DURATIONS
+      : GROK_VIDEO_DURATIONS;
+    return durations.map((seconds) => ({ value: String(seconds), label: `${seconds}s` }));
   }
   if (usesDeepRouterVeoCompatibility(modelId)) {
     return [{ value: "8", label: "8s" }];
@@ -1595,6 +1599,10 @@ function isGrokImagineImageModel(modelId) {
 
 function isGrokVideoModel(modelId) {
   return /grok.*video|video.*grok/i.test(String(modelId || ""));
+}
+
+function isThirdPartyGrokVideoModel(modelId) {
+  return /^grok[-_.]video[-_.]3(?:$|[-_.](?:max|pro)$)/i.test(String(modelId || ""));
 }
 
 function isGrokImagine15Model(modelId) {
@@ -1721,6 +1729,13 @@ function effectiveVideoCount(modelId = state.settings.videoModel) {
 
 function normalizeGrokVideoDuration(value, modelId = state.settings.videoModel) {
   const duration = Number(value);
+  if (isThirdPartyGrokVideoModel(modelId)) {
+    const fallback = /^grok[-_.]video[-_.]3[-_.](?:max|pro)$/i.test(String(modelId || "")) ? 10 : 6;
+    if (!Number.isFinite(duration)) return fallback;
+    return THIRD_PARTY_GROK_VIDEO_DURATIONS.reduce((closest, option) => (
+      Math.abs(option - duration) < Math.abs(closest - duration) ? option : closest
+    ), fallback);
+  }
   return Math.min(15, Math.max(1, Number.isFinite(duration) ? Math.round(duration) : 8));
 }
 
@@ -3275,7 +3290,7 @@ function buildGrokMultipartVideoRequest(prompt, profile, endpoint) {
   form.append("prompt", prompt);
   form.append("size", effectiveVideoAspectRatio(settings.videoModel));
   form.append("seconds", String(duration));
-  if (!isGrokImagine15Model(settings.videoModel)) {
+  if (!isThirdPartyGrokVideoModel(settings.videoModel) && !isGrokImagine15Model(settings.videoModel)) {
     form.append("duration", String(duration));
     form.append("resolution", effectiveVideoResolution(settings.videoModel));
   }
@@ -3286,7 +3301,7 @@ function buildGrokMultipartVideoRequest(prompt, profile, endpoint) {
   if (reference?.file) form.append("input_reference", reference.file, reference.name);
   else if (reference?.dataUrl) form.append("input_reference", reference.dataUrl);
   return {
-    label: `${profile?.vendor || "Grok"} DeepRouter Multipart 参数`,
+    label: `${profile?.vendor || "Grok"} 第三方 Multipart 参数`,
     endpoint,
     headers: rawAuthHeaders(),
     body: form,
@@ -3412,6 +3427,7 @@ function videoGenerationEndpoint(profile) {
   const endpoint = state.settings.videoEndpoint || DEFAULT_SETTINGS.videoEndpoint;
   const defaultLike = !endpoint || endpoint === DEFAULT_SETTINGS.videoEndpoint;
   if (profile?.provider === "xai") {
+    if (isThirdPartyGrokVideoModel(state.settings.videoModel)) return "/v1/videos";
     if (usesOfficialXaiVideoApi()) return "/v1/videos/generations";
     if (isDeepRouterBaseUrl()) return "/v1/videos";
     if (defaultLike) return "/v1/videos";

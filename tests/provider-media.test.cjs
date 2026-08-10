@@ -29,6 +29,7 @@ const {
   shouldStopMissingVideoTaskPolling,
   setTestDraftMedia,
   setTestSettings,
+  videoDurationOptionsForModel,
   videoStatusHeadersForTask,
   videoStatusEndpointForTask,
   videoResultUrlsForTask,
@@ -509,35 +510,63 @@ test("Grok Imagine 1.5 supports the official JSON endpoint when configured", () 
   assert.equal(videoStatusHeadersForTask({ provider: "xai", requestEndpoint: request.endpoint }).Authorization, "Bearer test-key");
 });
 
-test("all Grok video models use the shared supported duration and resolution values", () => {
-  [1, 4, 8, 15].forEach((duration) => {
-    const request = buildVideo("grok-video-3", "xai", { videoDuration: duration });
-    assert.equal(JSON.parse(request.body).duration, duration);
+test("third-party Grok 3 models use the documented multipart video contract", () => {
+  ["grok-video-3", "grok-video-3-max", "grok-video-3-pro"].forEach((model) => {
+    const request = buildVideo(model, "xai", {
+      baseUrl: "https://deeprouter.top",
+      videoEndpoint: "/v1/videos/generations",
+      videoAspectRatio: "9:16",
+      videoResolution: "720p",
+      videoDuration: 20,
+    });
+
+    assert.equal(request.endpoint, "/v1/videos");
+    assert.equal(request.headers.Authorization, "test-key");
+    assert.equal(request.body instanceof FormData, true);
+    assert.equal(request.body.get("model"), model);
+    assert.equal(request.body.get("prompt"), "测试视频提示词");
+    assert.equal(request.body.get("size"), "9:16");
+    assert.equal(request.body.get("seconds"), "20");
+    assert.equal(request.body.get("duration"), null);
+    assert.equal(request.body.get("resolution"), null);
   });
 
-  const standard = buildVideo("grok-video-3", "xai", { videoDuration: 20, videoResolution: "480p" });
-  assert.deepEqual(JSON.parse(standard.body), {
-    model: "grok-video-3",
-    prompt: "测试视频提示词",
-    duration: 15,
-    aspect_ratio: "16:9",
-    resolution: "480p",
-  });
+  const task = { provider: "xai", requestEndpoint: "/v1/videos" };
+  assert.equal(videoStatusEndpointForTask(task), "/v1/videos/{id}");
+  assert.equal(videoStatusHeadersForTask(task).Authorization, "test-key");
+});
 
-  const pro = buildVideo("grok-video-3-pro", "xai", { videoDuration: 20, videoAspectRatio: "9:16" });
-  assert.equal(JSON.parse(pro.body).duration, 15);
-  assert.equal(JSON.parse(pro.body).aspect_ratio, "9:16");
+test("third-party Grok 3 durations are normalized to channel-supported values", () => {
+  setTestSettings({ videoModel: "grok-video-3-pro" });
+  assert.deepEqual(
+    videoDurationOptionsForModel().map((option) => option.value),
+    ["6", "10", "12", "16", "20"]
+  );
+
+  const values = [
+    [1, "6"],
+    [8, "10"],
+    [12, "12"],
+    [15, "16"],
+    [20, "20"],
+  ];
+  values.forEach(([input, expected]) => {
+    const request = buildVideo("grok-video-3-pro", "xai", { videoDuration: input });
+    assert.equal(request.body.get("seconds"), expected);
+  });
 
   const repaired = buildVideo("grok-video-3", "xai", {
     videoAspectRatio: "21:9",
     videoResolution: "1080p",
     videoDuration: 15,
   });
-  assert.equal(JSON.parse(repaired.body).aspect_ratio, "16:9");
-  assert.equal(JSON.parse(repaired.body).resolution, "720p");
-  assert.equal(JSON.parse(repaired.body).duration, 15);
+  assert.equal(repaired.body.get("size"), "16:9");
+  assert.equal(repaired.body.get("seconds"), "16");
+});
 
+test("official Grok Imagine video models keep the JSON generation contract", () => {
   const quality = buildVideo("grok-imagine-video-1.5", "xai", { videoResolution: "1080p" });
+  assert.equal(quality.endpoint, "/v1/videos/generations");
   assert.equal(JSON.parse(quality.body).resolution, "1080p");
 });
 
