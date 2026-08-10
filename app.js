@@ -1635,6 +1635,7 @@ function isLinkMeshBaseUrl() {
 
 function usesOfficialXaiVideoApi() {
   return isLinkMeshBaseUrl()
+    || isDeepRouterBaseUrl()
     || /^https?:\/\/(?:api\.)?x\.ai(?:\/|$)/i.test(String(state.settings.baseUrl || ""));
 }
 

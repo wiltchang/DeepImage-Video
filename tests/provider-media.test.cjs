@@ -14,6 +14,7 @@ global.document = {
 const {
   apiUrlForBase,
   buildGrokTextVideoFallbackRequest,
+  buildImageRequest,
   buildVideoRequest,
   encodeVideoTaskId,
   extractErrorMessage,
@@ -89,6 +90,34 @@ test("DeepRouter authenticated video content uses the same-origin proxy", () => 
   );
 });
 
+test("DeepRouter and LinkMesh Grok images use the same official JSON fields", () => {
+  const settings = {
+    apiKey: "test-key",
+    imageModel: "grok-imagine-image",
+    imageEndpoint: "/v1/images/generations",
+    imageAspectRatio: "3:2",
+    imageQuality: "2k",
+    imageCount: 1,
+  };
+  setTestSettings({ ...settings, baseUrl: "https://ai.linkmesh.org" });
+  const linkMesh = buildImageRequest("测试图片提示词", [], false);
+  setTestSettings({ ...settings, baseUrl: "https://deeprouter.top" });
+  const deepRouter = buildImageRequest("测试图片提示词", [], false);
+
+  assert.equal(linkMesh.endpoint, "/v1/images/generations");
+  assert.equal(deepRouter.endpoint, linkMesh.endpoint);
+  assert.equal(deepRouter.headers.Authorization, "Bearer test-key");
+  assert.deepEqual(JSON.parse(deepRouter.body), JSON.parse(linkMesh.body));
+  assert.deepEqual(JSON.parse(deepRouter.body), {
+    model: "grok-imagine-image",
+    prompt: "测试图片提示词",
+    n: 1,
+    aspect_ratio: "3:2",
+    resolution: "2k",
+    response_format: "url",
+  });
+});
+
 test("LinkMesh Grok video creation and status requests stay on official xAI paths", () => {
   const request = buildVideo("grok-imagine-video", "xai", {
     baseUrl: "https://ai.linkmesh.org",
@@ -106,25 +135,25 @@ test("LinkMesh Grok video creation and status requests stay on official xAI path
   assert.equal(JSON.parse(request.body).aspect_ratio, "3:2");
 });
 
-test("DeepRouter Grok video repairs stale official endpoints to multipart", () => {
+test("DeepRouter Grok video uses the same official JSON contract as LinkMesh", () => {
   const request = buildVideo("grok-imagine-video", "xai", {
     baseUrl: "https://deeprouter.top",
-    videoEndpoint: "/v1/videos/generations",
-    videoStatusEndpoint: "/v1/videos/generations/{id}",
+    videoEndpoint: "/v1/videos",
+    videoStatusEndpoint: "/v1/videos/{id}",
     videoAspectRatio: "9:16",
     videoResolution: "480p",
     videoDuration: 8,
   });
 
-  assert.equal(request.endpoint, "/v1/videos");
-  assert.equal(request.headers.Authorization, "test-key");
-  assert.equal(request.body instanceof FormData, true);
-  assert.equal(request.body.get("model"), "grok-imagine-video");
-  assert.equal(request.body.get("prompt"), "测试视频提示词");
-  assert.equal(request.body.get("size"), "9:16");
-  assert.equal(request.body.get("seconds"), "8");
-  assert.equal(request.body.get("duration"), "8");
-  assert.equal(request.body.get("resolution"), "480p");
+  assert.equal(request.endpoint, "/v1/videos/generations");
+  assert.equal(request.headers.Authorization, "Bearer test-key");
+  assert.deepEqual(JSON.parse(request.body), {
+    model: "grok-imagine-video",
+    prompt: "测试视频提示词",
+    duration: 8,
+    aspect_ratio: "9:16",
+    resolution: "480p",
+  });
   assert.equal(videoStatusEndpointForTask({
     provider: "xai",
     requestEndpoint: request.endpoint,
@@ -132,12 +161,11 @@ test("DeepRouter Grok video repairs stale official endpoints to multipart", () =
   assert.equal(videoStatusHeadersForTask({
     provider: "xai",
     requestEndpoint: request.endpoint,
-  }).Authorization, "test-key");
+  }).Authorization, "Bearer test-key");
 });
 
-test("DeepRouter Grok Imagine 1.5 keeps the minimal multipart contract", () => {
+test("DeepRouter Grok Imagine 1.5 sends references through the official JSON contract", () => {
   const reference = media();
-  reference.file = new Blob(["abcd"], { type: "image/png" });
   const request = buildVideo("grok-imagine-video-1.5-preview", "xai", {
     baseUrl: "https://deeprouter.top",
     videoAspectRatio: "3:2",
@@ -145,12 +173,16 @@ test("DeepRouter Grok Imagine 1.5 keeps the minimal multipart contract", () => {
     videoDuration: 15,
   }, { firstFrame: reference });
 
-  assert.equal(request.endpoint, "/v1/videos");
-  assert.equal(request.body.get("size"), "3:2");
-  assert.equal(request.body.get("seconds"), "15");
-  assert.equal(request.body.has("duration"), false);
-  assert.equal(request.body.has("resolution"), false);
-  assert.equal(request.body.get("input_reference") instanceof Blob, true);
+  assert.equal(request.endpoint, "/v1/videos/generations");
+  assert.equal(request.headers.Authorization, "Bearer test-key");
+  assert.deepEqual(JSON.parse(request.body), {
+    model: "grok-imagine-video-1.5-preview",
+    prompt: "测试视频提示词",
+    duration: 15,
+    aspect_ratio: "3:2",
+    resolution: "1080p",
+    image: { url: reference.dataUrl },
+  });
 });
 
 test("relative LinkMesh Grok video results are proxied and downloaded with authorization", async () => {
@@ -298,6 +330,10 @@ test("nested queued video responses expose their task ID", () => {
   };
   assert.equal(extractJobId(response), "29d48f1857d04674a663ff00e5750689");
   assert.equal(extractTaskStatus(response), "queued");
+  assert.equal(
+    extractJobId({ data: { request_id: "bfdbdfbe-6eea-99f4-ae4a-5e774f2cf6f6" } }),
+    "bfdbdfbe-6eea-99f4-ae4a-5e774f2cf6f6"
+  );
 });
 
 test("missing DeepRouter video tasks receive a polling grace period", () => {
