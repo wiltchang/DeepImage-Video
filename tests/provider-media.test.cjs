@@ -74,6 +74,21 @@ test("LinkMesh API URLs use the same-origin proxy without duplicating v1", () =>
   );
 });
 
+test("DeepRouter authenticated video content uses the same-origin proxy", () => {
+  assert.equal(
+    apiUrlForBase("https://deeprouter.top", "/v1/videos/task_123/content"),
+    "/__deeprouter/v1/videos/task_123/content"
+  );
+  assert.equal(
+    apiUrlForBase("https://www.deeprouter.top", "https://www.deeprouter.top/v1/videos/task_456/content"),
+    "/__deeprouter/v1/videos/task_456/content"
+  );
+  assert.equal(
+    apiUrlForBase("https://deeprouter.top", "/v1/videos/task_123"),
+    "https://deeprouter.top/v1/videos/task_123"
+  );
+});
+
 test("LinkMesh Grok video creation and status requests stay on official xAI paths", () => {
   const request = buildVideo("grok-imagine-video", "xai", {
     baseUrl: "https://ai.linkmesh.org",
@@ -323,7 +338,7 @@ test("Grok result parsing ignores thumbnails and keeps the authenticated video",
     thumbnail_url: "https://cdn.example.com/task-preview.jpg",
   };
   assert.deepEqual(extractVideoUrls(response), [
-    "https://deeprouter.top/v1/videos/task_with_thumbnail/content",
+    "/__deeprouter/v1/videos/task_with_thumbnail/content",
   ]);
 });
 
@@ -332,7 +347,7 @@ test("completed Grok tasks derive the standard content endpoint when no URL is r
   assert.deepEqual(videoResultUrlsForTask(
     { id: "task_completed_without_url", status: "completed" },
     { jobId: "task_completed_without_url", provider: "xai", requestEndpoint: "/v1/videos" }
-  ), ["https://deeprouter.top/v1/videos/task_completed_without_url/content"]);
+  ), ["/__deeprouter/v1/videos/task_completed_without_url/content"]);
 });
 
 test("completed LinkMesh Grok tasks also derive the authenticated content endpoint", () => {
@@ -346,7 +361,7 @@ test("completed LinkMesh Grok tasks also derive the authenticated content endpoi
 test("relative DeepRouter video content URLs are normalized against the API base", () => {
   setTestSettings({ baseUrl: "https://deeprouter.top" });
   assert.deepEqual(extractVideoUrls({ result_url: "/v1/videos/task_relative/content" }), [
-    "https://deeprouter.top/v1/videos/task_relative/content",
+    "/__deeprouter/v1/videos/task_relative/content",
   ]);
 });
 
@@ -355,7 +370,7 @@ test("authenticated DeepRouter video results are downloaded for browser playback
   const originalFetch = global.fetch;
   let receivedHeaders;
   global.fetch = async (url, options) => {
-    assert.equal(url, "https://www.deeprouter.top/v1/videos/task_private/content");
+    assert.equal(url, "/__deeprouter/v1/videos/task_private/content");
     receivedHeaders = options.headers;
     return new Response(new Blob(["video-content"], { type: "video/mp4" }), {
       status: 200,

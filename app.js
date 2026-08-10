@@ -4,6 +4,8 @@ const DEFAULT_API_BASE_URL = "https://deeprouter.top";
 const LEGACY_DEFAULT_API_BASE_URLS = new Set(["https://www.yhshu.ai"]);
 const LINKMESH_API_HOST = "ai.linkmesh.org";
 const LINKMESH_PROXY_PREFIX = "/__linkmesh";
+const DEEPROUTER_API_HOST = "deeprouter.top";
+const DEEPROUTER_PROXY_PREFIX = "/__deeprouter";
 const MEDIA_CACHE_DB_NAME = "yhshu_visual_media_cache";
 const MEDIA_CACHE_STORE = "visual_media";
 const MEDIA_CACHE_VERSION = 1;
@@ -4170,7 +4172,7 @@ async function fetchGeneratedMediaResource(src, task) {
 }
 
 function isApiResourceUrl(value) {
-  if (isLinkMeshProxyPath(value)) return true;
+  if (isLinkMeshProxyPath(value) || isDeepRouterProxyPath(value)) return true;
   try {
     const url = new URL(String(value || ""));
     const base = new URL(normalizeApiBaseUrl(state.settings.baseUrl) || DEFAULT_API_BASE_URL);
@@ -4823,14 +4825,14 @@ function apiUrl(path) {
 function apiUrlForBase(baseUrl, path) {
   const base = normalizeApiBaseUrl(baseUrl);
   if (!base) throw new Error("API Base URL 不能为空");
-  if (isLinkMeshProxyPath(path)) return path;
+  if (isLinkMeshProxyPath(path) || isDeepRouterProxyPath(path)) return path;
   let target = path;
   if (!/^https?:\/\//i.test(path)) {
     if (base.endsWith("/v1") && path.startsWith("/v1/")) target = `${base}${path.slice(3)}`;
     else if (base.endsWith("/v1") && path.startsWith("/v1beta/")) target = `${base.slice(0, -3)}${path}`;
     else target = `${base}${path}`;
   }
-  return linkMeshProxyUrl(target) || target;
+  return linkMeshProxyUrl(target) || deepRouterVideoProxyUrl(target) || target;
 }
 
 function linkMeshProxyUrl(value) {
@@ -4845,6 +4847,21 @@ function linkMeshProxyUrl(value) {
 
 function isLinkMeshProxyPath(value) {
   return String(value || "").startsWith(`${LINKMESH_PROXY_PREFIX}/`);
+}
+
+function deepRouterVideoProxyUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    const host = url.hostname.toLowerCase().replace(/^www\./, "");
+    if (host !== DEEPROUTER_API_HOST || !/^\/v1\/videos\/[^/]+\/content\/?$/i.test(url.pathname)) return "";
+    return `${DEEPROUTER_PROXY_PREFIX}${url.pathname}${url.search}`;
+  } catch {
+    return "";
+  }
+}
+
+function isDeepRouterProxyPath(value) {
+  return String(value || "").startsWith(`${DEEPROUTER_PROXY_PREFIX}/`);
 }
 
 function normalizeApiBaseUrl(value) {
@@ -5086,6 +5103,9 @@ async function materializeVideoUrls(urls, task) {
 function isAuthenticatedVideoProxyUrl(value) {
   if (isLinkMeshProxyPath(value)) {
     return /^\/__linkmesh\/v1\/videos\/[^/]+\/content\/?$/i.test(String(value));
+  }
+  if (isDeepRouterProxyPath(value)) {
+    return /^\/__deeprouter\/v1\/videos\/[^/]+\/content\/?$/i.test(String(value));
   }
   try {
     const url = new URL(String(value || ""));
