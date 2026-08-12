@@ -1049,7 +1049,10 @@ function bindEvents() {
   els.chatAttachmentFiles.addEventListener("change", handleChatAttachmentFiles);
   els.quickModel.addEventListener("change", () => {
     if (activeMode === "image") {
-      if (state.settings.visualMode === "video") state.settings.videoModel = els.quickModel.value;
+      if (state.settings.visualMode === "video") {
+        state.settings.videoModel = els.quickModel.value;
+        normalizeDocumentedVeo31DraftForModel();
+      }
       else state.settings.imageModel = els.quickModel.value;
     } else {
       state.settings.chatModel = els.quickModel.value;
@@ -1250,6 +1253,8 @@ function renderControls() {
   const isVisual = activeMode === "image";
   const visualMode = state.settings.visualMode;
   const grokVideoSelected = isVisual && visualMode === "video" && isGrokVideoModel(state.settings.videoModel);
+  const documentedVeo31Selected = isVisual && visualMode === "video" && isDocumentedVeo31Model(state.settings.videoModel);
+  const documentedVeo31FastSelected = documentedVeo31Selected && isDocumentedVeo31FastModel(state.settings.videoModel);
   els.visualToolbar.hidden = !isVisual;
   els.chatToolbar.hidden = isVisual;
   els.chatWebToggle.classList.toggle("active", !!state.settings.chatWeb);
@@ -1266,11 +1271,14 @@ function renderControls() {
   els.thinkingToggle.hidden = isVisual;
   els.uploadImageRefButton.title = grokVideoSelected
     ? "上传一张参考图进行图生视频"
+    : documentedVeo31Selected
+      ? "上传 1-3 张主体或风格参考图"
     : visualMode === "video" ? "上传视频参考图" : "上传图片进行图生图";
+  els.uploadImageRefButton.hidden = documentedVeo31FastSelected;
   els.uploadFirstFrameButton.hidden = !isVisual || visualMode !== "video" || grokVideoSelected;
   els.uploadLastFrameButton.hidden = !isVisual || visualMode !== "video" || grokVideoSelected;
-  els.uploadVideoRefButton.hidden = !isVisual || visualMode !== "video" || grokVideoSelected;
-  els.uploadAudioButton.hidden = !isVisual || visualMode !== "video" || grokVideoSelected;
+  els.uploadVideoRefButton.hidden = !isVisual || visualMode !== "video" || grokVideoSelected || documentedVeo31Selected;
+  els.uploadAudioButton.hidden = !isVisual || visualMode !== "video" || grokVideoSelected || documentedVeo31Selected;
   fillQuickModelSelect();
   const selectedModel = activeMode === "image"
     ? state.settings.visualMode === "video"
@@ -1348,8 +1356,9 @@ function renderOutputOptions() {
   if (videoAspectLabel) videoAspectLabel.textContent = usesPixelSize ? "尺寸" : "比例";
   if (videoResolutionRow) videoResolutionRow.hidden = usesPixelSize;
   if (videoCountRow) videoCountRow.hidden = !isSeedanceModel(state.settings.videoModel);
-  if (videoStyleRow) videoStyleRow.hidden = usesOfficialGrokRequest;
-  if (videoAudioRow) videoAudioRow.hidden = usesOfficialGrokRequest;
+  const documentedVeo31 = isDocumentedVeo31Model(state.settings.videoModel);
+  if (videoStyleRow) videoStyleRow.hidden = usesOfficialGrokRequest || documentedVeo31;
+  if (videoAudioRow) videoAudioRow.hidden = usesOfficialGrokRequest || documentedVeo31;
   renderOptionGroup(els.videoResolutionGroup, "videoResolution", videoResolutionOptionsForModel(), effectiveVideoResolution());
   renderStepperOptionGroup(
     els.videoDurationGroup,
@@ -1496,6 +1505,9 @@ function videoResolutionOptionsForModel() {
     const supported = isGrokImagine15Model(modelId) ? ["480p", "720p", "1080p"] : ["480p", "720p"];
     return VIDEO_RESOLUTION_OPTIONS.filter((option) => supported.includes(option.value));
   }
+  if (isDocumentedVeo31Model(modelId)) {
+    return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["720p", "1080p"].includes(option.value));
+  }
   if (isVeoModel(modelId)) {
     let supported = ["720p", "1080p"];
     if (isVeo2Model(modelId) || isVeo31LiteModel(modelId)) supported = ["720p"];
@@ -1523,6 +1535,9 @@ function videoAspectOptionsForModel() {
   if (isGrokVideoModel(modelId)) {
     return ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"].map((value) => ({ value, label: value }));
   }
+  if (isDocumentedVeo31ReferenceMode(modelId)) {
+    return [{ value: "16:9", label: "16:9" }];
+  }
   if (isVeoModel(modelId)) {
     return VIDEO_ASPECT_OPTIONS.filter((option) => ["16:9", "9:16"].includes(option.value));
   }
@@ -1538,6 +1553,9 @@ function videoDurationOptionsForModel() {
     return GROK_VIDEO_DURATIONS.map((seconds) => ({ value: String(seconds), label: `${seconds}s` }));
   }
   if (usesDeepRouterVeoCompatibility(modelId)) {
+    return [{ value: "8", label: "8s" }];
+  }
+  if (isDocumentedVeo31Model(modelId) && requiresEightSecondVeo31Duration(modelId)) {
     return [{ value: "8", label: "8s" }];
   }
   if (isVeoModel(modelId)) {
@@ -1617,6 +1635,14 @@ function isVeo31Model(modelId) {
   return /veo[-_.]?3(?:[-_.]?1|\.1)/i.test(String(modelId || ""));
 }
 
+function isDocumentedVeo31Model(modelId) {
+  return /^veo[-_.]3[-_.]1(?:[-_.]fast)?[-_.]generate[-_.]preview$/i.test(String(modelId || ""));
+}
+
+function isDocumentedVeo31FastModel(modelId) {
+  return /^veo[-_.]3[-_.]1[-_.]fast[-_.]generate[-_.]preview$/i.test(String(modelId || ""));
+}
+
 function isVeo31LiteModel(modelId) {
   return isVeo31Model(modelId) && /lite/i.test(String(modelId || ""));
 }
@@ -1649,7 +1675,10 @@ function usesDeepRouterVeoCompatibility(modelId = state.settings.videoModel) {
 }
 
 function usesNewApiVeoTask(modelId = state.settings.videoModel) {
-  return isVeoModel(modelId) && isDeepRouterBaseUrl() && !usesDeepRouterVeoCompatibility(modelId);
+  return isVeoModel(modelId)
+    && isDeepRouterBaseUrl()
+    && !usesDeepRouterVeoCompatibility(modelId)
+    && !isDocumentedVeo31Model(modelId);
 }
 
 function usesPixelVideoSizeOptions(modelId = state.settings.videoModel) {
@@ -1675,6 +1704,7 @@ function effectiveVideoAspectRatio(modelId = state.settings.videoModel) {
   if (isGrokVideoModel(modelId)) {
     return ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"].includes(ratio) ? ratio : "16:9";
   }
+  if (isDocumentedVeo31ReferenceMode(modelId)) return "16:9";
   if (isVeoModel(modelId)) return ["16:9", "9:16"].includes(ratio) ? ratio : "16:9";
   return ratio;
 }
@@ -1688,6 +1718,7 @@ function effectiveVideoResolution(modelId = state.settings.videoModel) {
     const supported = isGrokImagine15Model(modelId) ? ["480p", "720p", "1080p"] : ["480p", "720p"];
     return supported.includes(resolution) ? resolution : "720p";
   }
+  if (isDocumentedVeo31Model(modelId)) return ["720p", "1080p"].includes(resolution) ? resolution : "720p";
   if (isVeo2Model(modelId) || isVeo31LiteModel(modelId)) return "720p";
   if (isVeo31Model(modelId)) return ["720p", "1080p", "4k"].includes(resolution) ? resolution : "720p";
   if (isVeoModel(modelId)) return ["720p", "1080p"].includes(resolution) ? resolution : "720p";
@@ -1736,6 +1767,11 @@ function normalizeVeoDuration(value, modelId = state.settings.videoModel) {
   const allowed = isVeo2Model(modelId) ? [5, 6, 8] : [4, 6, 8];
   const duration = Number(value);
   if (usesDeepRouterVeoCompatibility(modelId)) return 8;
+  if (isDocumentedVeo31Model(modelId)) {
+    if (requiresEightSecondVeo31Duration(modelId)) return 8;
+    if (!Number.isFinite(duration)) return 8;
+    return allowed.reduce((closest, option) => Math.abs(option - duration) < Math.abs(closest - duration) ? option : closest, 8);
+  }
   const usesReferences = isVeo31Model(modelId) && !isVeo31LiteModel(modelId) && hasVeoReferenceImages();
   if (["1080p", "4k"].includes(effectiveVideoResolution(modelId)) || usesReferences) return 8;
   if (!Number.isFinite(duration)) return allowed[0];
@@ -1744,6 +1780,27 @@ function normalizeVeoDuration(value, modelId = state.settings.videoModel) {
 
 function hasVeoReferenceImages() {
   return draftMedia.firstFrame ? draftMedia.videoImages.length > 0 : draftMedia.videoImages.length > 1;
+}
+
+function isDocumentedVeo31ReferenceMode(modelId = state.settings.videoModel) {
+  return isDocumentedVeo31Model(modelId)
+    && !isDocumentedVeo31FastModel(modelId)
+    && !draftMedia.firstFrame
+    && !draftMedia.lastFrame
+    && draftMedia.videoImages.length > 0;
+}
+
+function requiresEightSecondVeo31Duration(modelId = state.settings.videoModel) {
+  return isDocumentedVeo31Model(modelId)
+    && (isDocumentedVeo31ReferenceMode(modelId) || Boolean(draftMedia.firstFrame && draftMedia.lastFrame));
+}
+
+function normalizeDocumentedVeo31DraftForModel(modelId = state.settings.videoModel) {
+  if (!isDocumentedVeo31Model(modelId)) return;
+  draftMedia.videoReferences = [];
+  draftMedia.audio = null;
+  if (isDocumentedVeo31FastModel(modelId)) draftMedia.videoImages = [];
+  else draftMedia.videoImages = draftMedia.videoImages.slice(0, 3);
 }
 
 function effectiveVideoAudio(modelId = state.settings.videoModel) {
@@ -3077,6 +3134,9 @@ function buildVideoRequest(prompt, profile) {
   if (profile?.provider === "veo" && usesDeepRouterVeoCompatibility(settings.videoModel)) {
     return buildCompatibleMultipartVideoRequest(prompt, profile);
   }
+  if (profile?.provider === "veo" && isDocumentedVeo31Model(settings.videoModel)) {
+    return buildVeoVideoRequest(prompt, profile);
+  }
   if (profile?.provider === "veo" && usesNewApiVeoTask(settings.videoModel)) {
     return buildNewApiVeoVideoRequest(prompt, profile);
   }
@@ -3379,11 +3439,28 @@ function buildNewApiVeoVideoRequest(prompt, profile) {
 
 function buildVeoVideoRequest(prompt, profile) {
   const settings = state.settings;
+  const modelId = settings.videoModel;
   const instance = { prompt };
-  const primaryImage = draftMedia.firstFrame || draftMedia.videoImages[0];
+  const documentedVeo31 = isDocumentedVeo31Model(modelId);
+  const referenceMode = isDocumentedVeo31ReferenceMode(modelId);
+  if (documentedVeo31 && draftMedia.lastFrame && !draftMedia.firstFrame) {
+    throw new Error("Veo 3.1 尾帧必须与首帧同时使用");
+  }
+  if (documentedVeo31 && isDocumentedVeo31FastModel(modelId) && draftMedia.videoImages.length) {
+    throw new Error("Veo 3.1 Fast 不支持参考图，请改用首帧上传");
+  }
+  if (documentedVeo31 && draftMedia.firstFrame && draftMedia.videoImages.length) {
+    throw new Error("Veo 3.1 首帧/首尾帧不能与参考图同时使用");
+  }
+  const primaryImage = referenceMode ? null : draftMedia.firstFrame || draftMedia.videoImages[0];
   if (primaryImage) instance.image = geminiVideoImage(primaryImage);
   if (primaryImage && draftMedia.lastFrame) instance.lastFrame = geminiVideoImage(draftMedia.lastFrame);
-  if (isVeo31Model(settings.videoModel) && !isVeo31LiteModel(settings.videoModel)) {
+  if (referenceMode) {
+    instance.referenceImages = draftMedia.videoImages.slice(0, 3).map((item) => ({
+      image: geminiVideoImage(item),
+      referenceType: "asset",
+    }));
+  } else if (!documentedVeo31 && isVeo31Model(modelId) && !isVeo31LiteModel(modelId)) {
     const references = draftMedia.firstFrame ? draftMedia.videoImages : draftMedia.videoImages.slice(1);
     if (references.length) {
       instance.referenceImages = references.slice(0, 3).map((item) => ({
@@ -3393,10 +3470,11 @@ function buildVeoVideoRequest(prompt, profile) {
     }
   }
   const parameters = {
-    aspectRatio: effectiveVideoAspectRatio(settings.videoModel),
-    durationSeconds: effectiveVideoDuration(settings.videoModel),
+    aspectRatio: effectiveVideoAspectRatio(modelId),
+    durationSeconds: effectiveVideoDuration(modelId),
   };
-  if (!isVeo2Model(settings.videoModel)) parameters.resolution = effectiveVideoResolution(settings.videoModel);
+  if (!isVeo2Model(modelId)) parameters.resolution = effectiveVideoResolution(modelId);
+  if (documentedVeo31) parameters.numberOfVideos = 1;
   const body = { instances: [instance], parameters };
   return {
     label: `${profile?.vendor || "Google"} Veo 原生参数`,
@@ -3407,6 +3485,7 @@ function buildVeoVideoRequest(prompt, profile) {
 }
 
 function geminiVideoImage(item) {
+  if (/^https?:\/\//i.test(String(item?.dataUrl || ""))) return { imageUri: item.dataUrl };
   const inline = parseInlineDataUrl(item?.dataUrl);
   if (!inline) throw new Error(`参考图 ${item?.name || ""} 缺少有效的 Base64 数据`);
   return { inlineData: { mimeType: inline.mime, data: inline.data } };
@@ -3429,6 +3508,10 @@ function videoGenerationEndpoint(profile) {
   }
   if (profile?.provider === "seedance" && defaultLike) return "/v1/video/generations";
   if (profile?.provider === "veo" && usesDeepRouterVeoCompatibility(state.settings.videoModel) && defaultLike) return "/v1/videos";
+  if (profile?.provider === "veo" && isDocumentedVeo31Model(state.settings.videoModel)) {
+    const modelId = String(state.settings.videoModel || "").replace(/^models\//, "");
+    return `/v1beta/models/${encodeURIComponent(modelId)}:predictLongRunning`;
+  }
   if (profile?.provider === "veo" && usesNewApiVeoTask(state.settings.videoModel) && defaultLike) return "/v1/video/generations";
   if (profile?.provider === "veo" && resolveVideoApiStyle(profile) === "gemini" && defaultLike) {
     const modelId = String(state.settings.videoModel || "").replace(/^models\//, "");
@@ -4279,7 +4362,16 @@ async function handleReferenceFiles(event, kind) {
     const items = await Promise.all(files.map((file) => readMediaFile(file)));
     if (kind === "image-reference") {
       if (state.settings.visualMode === "video") {
-        draftMedia.videoImages = uniqueMedia([...draftMedia.videoImages, ...items]).slice(0, 6);
+        if (isDocumentedVeo31FastModel(state.settings.videoModel)) {
+          throw new Error("Veo 3.1 Fast 不支持参考图，请使用首帧功能");
+        }
+        if (isDocumentedVeo31Model(state.settings.videoModel)) {
+          draftMedia.firstFrame = null;
+          draftMedia.lastFrame = null;
+          draftMedia.videoImages = uniqueMedia([...draftMedia.videoImages, ...items]).slice(0, 3);
+        } else {
+          draftMedia.videoImages = uniqueMedia([...draftMedia.videoImages, ...items]).slice(0, 6);
+        }
       } else {
         draftMedia.imageReferences = uniqueMedia([...draftMedia.imageReferences, ...items]).slice(0, 8);
         syncImageModeFromReferences();
@@ -4288,6 +4380,7 @@ async function handleReferenceFiles(event, kind) {
       draftMedia.videoReferences = uniqueMedia([...draftMedia.videoReferences, ...items]).slice(0, 3);
       state.settings.visualMode = "video";
     } else if (kind === "first-frame") {
+      if (isDocumentedVeo31Model(state.settings.videoModel)) draftMedia.videoImages = [];
       draftMedia.firstFrame = items[0];
       state.settings.visualMode = "video";
     } else if (kind === "last-frame") {
@@ -4643,7 +4736,10 @@ function currentModelForType(type) {
 
 function selectModelFromPicker(modelId) {
   if (!modelId || isHiddenModel(modelId)) return;
-  if (modelPickerType === "video") state.settings.videoModel = modelId;
+  if (modelPickerType === "video") {
+    state.settings.videoModel = modelId;
+    normalizeDocumentedVeo31DraftForModel();
+  }
   else if (modelPickerType === "image") state.settings.imageModel = modelId;
   else state.settings.chatModel = modelId;
   state.modelOptions = unique([modelId, ...state.modelOptions.filter((id) => !isHiddenModel(id))]);

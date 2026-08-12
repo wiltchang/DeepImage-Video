@@ -29,7 +29,9 @@ const {
   shouldStopMissingVideoTaskPolling,
   setTestDraftMedia,
   setTestSettings,
+  videoAspectOptionsForModel,
   videoDurationOptionsForModel,
+  videoResolutionOptionsForModel,
   videoStatusHeadersForTask,
   videoStatusEndpointForTask,
   videoResultUrlsForTask,
@@ -613,19 +615,30 @@ test("compact Veo aliases use the working multipart compatibility route", () => 
   assert.equal(videoStatusHeadersForTask(task).Authorization, "test-key");
 });
 
-test("official Veo model IDs retain NewAPI metadata controls", () => {
-  const request = buildVideo("veo-3.1-fast-generate-preview", "veo", {
-    videoAspectRatio: "9:16",
-    videoResolution: "4k",
-    videoDuration: 4,
-  });
-  const body = JSON.parse(request.body);
+test("documented Veo 3.1 models use Gemini async parameters on DeepRouter", () => {
+  for (const model of ["veo-3.1-generate-preview", "veo-3.1-fast-generate-preview"]) {
+    const request = buildVideo(model, "veo", {
+      videoAspectRatio: "9:16",
+      videoResolution: "1080p",
+      videoDuration: 4,
+      videoEndpoint: "/v1/videos",
+    });
+    const body = JSON.parse(request.body);
 
-  assert.equal(request.endpoint, "/v1/video/generations");
-  assert.equal(request.headers.Authorization, "Bearer test-key");
-  assert.equal(body.metadata.aspectRatio, "9:16");
-  assert.equal(body.metadata.resolution, "4k");
-  assert.equal(body.metadata.durationSeconds, 8);
+    assert.equal(request.endpoint, `/v1beta/models/${model}:predictLongRunning`);
+    assert.equal(request.headers.Authorization, "Bearer test-key");
+    assert.deepEqual(body, {
+      instances: [{ prompt: "测试视频提示词" }],
+      parameters: {
+        aspectRatio: "9:16",
+        durationSeconds: 4,
+        resolution: "1080p",
+        numberOfVideos: 1,
+      },
+    });
+    const task = { provider: "veo", requestEndpoint: request.endpoint };
+    assert.equal(videoStatusEndpointForTask(task), "/v1beta/{id}");
+  }
 });
 
 test("Veo 3.1 uses predictLongRunning on a native Gemini service", () => {
@@ -640,24 +653,112 @@ test("Veo 3.1 uses predictLongRunning on a native Gemini service", () => {
   assert.equal(request.endpoint, "/v1beta/models/veo-3.1-generate-preview:predictLongRunning");
   assert.deepEqual(body, {
     instances: [{ prompt: "测试视频提示词" }],
-    parameters: { aspectRatio: "16:9", durationSeconds: 8, resolution: "4k" },
+    parameters: { aspectRatio: "16:9", durationSeconds: 4, resolution: "720p", numberOfVideos: 1 },
   });
 });
 
-test("Veo 3.1 maps first frame, last frame, and reference images", () => {
+test("Veo 3.1 first and last frames force the documented eight-second duration", () => {
   const request = buildVideo("veo-3.1-generate-preview", "veo", {
     baseUrl: "https://generativelanguage.googleapis.com",
+    videoAspectRatio: "9:16",
+    videoResolution: "1080p",
+    videoDuration: 4,
   }, {
     firstFrame: media("first.png"),
     lastFrame: media("last.png"),
-    videoImages: [media("asset.png")],
   });
   const body = JSON.parse(request.body);
 
   assert.equal(body.parameters.durationSeconds, 8);
+  assert.equal(body.parameters.aspectRatio, "9:16");
+  assert.equal(body.parameters.resolution, "1080p");
+  assert.equal(body.parameters.numberOfVideos, 1);
   assert.equal(body.instances[0].image.inlineData.data, "YWJjZA==");
   assert.equal(body.instances[0].lastFrame.inlineData.data, "YWJjZA==");
+  assert.equal(body.instances[0].referenceImages, undefined);
+});
+
+test("regular Veo 3.1 supports up to three reference images at 16:9 and eight seconds", () => {
+  const request = buildVideo("veo-3.1-generate-preview", "veo", {
+    baseUrl: "https://api.bananarouter.com",
+    videoAspectRatio: "9:16",
+    videoResolution: "720p",
+    videoDuration: 4,
+  }, {
+    videoImages: [media("one.png"), media("two.png"), media("three.png"), media("four.png")],
+  });
+  const body = JSON.parse(request.body);
+
+  assert.equal(body.parameters.durationSeconds, 8);
+  assert.equal(body.parameters.aspectRatio, "16:9");
+  assert.equal(body.instances[0].image, undefined);
+  assert.equal(body.instances[0].referenceImages.length, 3);
   assert.equal(body.instances[0].referenceImages[0].referenceType, "asset");
+});
+
+test("Veo 3.1 maps a public first-frame URL through imageUri", () => {
+  const request = buildVideo("veo-3.1-fast-generate-preview", "veo", {
+    baseUrl: "https://api.bananarouter.com",
+  }, {
+    firstFrame: {
+      name: "public.png",
+      mime: "image/png",
+      dataUrl: "https://cdn.example.com/public.png",
+    },
+  });
+  const body = JSON.parse(request.body);
+  assert.deepEqual(body.instances[0].image, { imageUri: "https://cdn.example.com/public.png" });
+});
+
+test("Veo 3.1 Fast accepts a first frame but rejects reference-image mode", () => {
+  const firstFrame = buildVideo("veo-3.1-fast-generate-preview", "veo", {
+    baseUrl: "https://api.bananarouter.com",
+    videoAspectRatio: "9:16",
+    videoResolution: "1080p",
+    videoDuration: 6,
+  }, { firstFrame: media("first.png") });
+  const body = JSON.parse(firstFrame.body);
+  assert.equal(body.parameters.durationSeconds, 6);
+  assert.equal(body.instances[0].image.inlineData.data, "YWJjZA==");
+
+  assert.throws(
+    () => buildVideo("veo-3.1-fast-generate-preview", "veo", {
+      baseUrl: "https://api.bananarouter.com",
+    }, { videoImages: [media("reference.png")] }),
+    /Fast 不支持参考图/
+  );
+});
+
+test("Veo 3.1 controls expose only documented durations, resolutions, and ratios", () => {
+  setTestSettings({
+    videoModel: "veo-3.1-generate-preview",
+    videoDuration: 6,
+    videoResolution: "4k",
+    videoAspectRatio: "9:16",
+  });
+  setTestDraftMedia({});
+  assert.deepEqual(videoDurationOptionsForModel().map((option) => option.value), ["4", "6", "8"]);
+  assert.deepEqual(videoResolutionOptionsForModel().map((option) => option.value), ["720p", "1080p"]);
+  assert.deepEqual(videoAspectOptionsForModel().map((option) => option.value), ["16:9", "9:16"]);
+
+  setTestDraftMedia({ videoImages: [media("reference.png")] });
+  assert.deepEqual(videoDurationOptionsForModel().map((option) => option.value), ["8"]);
+  assert.deepEqual(videoAspectOptionsForModel().map((option) => option.value), ["16:9"]);
+});
+
+test("Veo 3.1 operation responses expose the generated video URI", () => {
+  const response = {
+    name: "operations/operation-id",
+    done: true,
+    response: {
+      generateVideoResponse: {
+        generatedSamples: [{ video: { uri: "https://cdn.example.com/veo-result.mp4" } }],
+        raiMediaFilteredCount: 0,
+      },
+    },
+  };
+  assert.deepEqual(extractVideoUrls(response), ["https://cdn.example.com/veo-result.mp4"]);
+  assert.equal(extractTaskStatus(response), "done");
 });
 
 test("Veo 2 omits its unsupported resolution parameter", () => {
