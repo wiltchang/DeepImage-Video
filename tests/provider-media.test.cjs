@@ -615,7 +615,7 @@ test("compact Veo aliases use the working multipart compatibility route", () => 
   assert.equal(videoStatusHeadersForTask(task).Authorization, "test-key");
 });
 
-test("documented Veo 3.1 models use Gemini async parameters on DeepRouter", () => {
+test("documented Veo 3.1 models use the OpenAI-compatible task API on DeepRouter", () => {
   for (const model of ["veo-3.1-generate-preview", "veo-3.1-fast-generate-preview"]) {
     const request = buildVideo(model, "veo", {
       videoAspectRatio: "9:16",
@@ -625,20 +625,48 @@ test("documented Veo 3.1 models use Gemini async parameters on DeepRouter", () =
     });
     const body = JSON.parse(request.body);
 
-    assert.equal(request.endpoint, `/v1beta/models/${model}:predictLongRunning`);
-    assert.equal(request.headers.Authorization, "Bearer test-key");
+    assert.equal(request.endpoint, "/v1/videos");
+    assert.equal(request.headers.Authorization, "test-key");
     assert.deepEqual(body, {
-      instances: [{ prompt: "测试视频提示词" }],
-      parameters: {
-        aspectRatio: "9:16",
-        durationSeconds: 4,
-        resolution: "1080p",
-        numberOfVideos: 1,
-      },
+      model,
+      prompt: "测试视频提示词",
+      seconds: "4",
+      size: "1080x1920",
+      metadata: { durationSeconds: 4, resolution: "1080p", aspectRatio: "9:16" },
     });
     const task = { provider: "veo", requestEndpoint: request.endpoint };
-    assert.equal(videoStatusEndpointForTask(task), "/v1beta/{id}");
+    assert.equal(videoStatusEndpointForTask(task), "/v1/videos/{id}");
+    assert.equal(videoStatusHeadersForTask(task).Authorization, "test-key");
   }
+});
+
+test("DeepRouter Veo 3.1 sends a first frame through multipart compatibility fields", () => {
+  const reference = media("first.png");
+  reference.file = new Blob(["abcd"], { type: "image/png" });
+  const request = buildVideo("veo-3.1-fast-generate-preview", "veo", {
+    baseUrl: "https://deeprouter.top",
+    videoAspectRatio: "16:9",
+    videoResolution: "720p",
+    videoDuration: 6,
+  }, { firstFrame: reference });
+
+  assert.equal(request.endpoint, "/v1/videos");
+  assert.equal(request.headers.Authorization, "test-key");
+  assert.equal(request.body instanceof FormData, true);
+  assert.equal(request.body.get("model"), "veo-3.1-fast-generate-preview");
+  assert.equal(request.body.get("seconds"), "6");
+  assert.equal(request.body.get("size"), "1280x720");
+  assert.equal(request.body.get("resolution"), "720p");
+  assert.equal(request.body.get("aspectRatio"), "16:9");
+  assert.equal(request.body.get("input_reference") instanceof Blob, true);
+});
+
+test("completed DeepRouter Veo tasks derive the authenticated content endpoint", () => {
+  setTestSettings({ baseUrl: "https://deeprouter.top", apiKey: "test-key" });
+  assert.deepEqual(videoResultUrlsForTask(
+    { status: "completed" },
+    { jobId: "veo-task-id", provider: "veo", requestEndpoint: "/v1/videos" }
+  ), ["/__deeprouter/v1/videos/veo-task-id/content"]);
 });
 
 test("Veo 3.1 uses predictLongRunning on a native Gemini service", () => {
@@ -731,6 +759,7 @@ test("Veo 3.1 Fast accepts a first frame but rejects reference-image mode", () =
 
 test("Veo 3.1 controls expose only documented durations, resolutions, and ratios", () => {
   setTestSettings({
+    baseUrl: "https://api.bananarouter.com",
     videoModel: "veo-3.1-generate-preview",
     videoDuration: 6,
     videoResolution: "4k",

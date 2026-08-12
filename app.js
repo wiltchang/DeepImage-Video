@@ -1254,7 +1254,9 @@ function renderControls() {
   const visualMode = state.settings.visualMode;
   const grokVideoSelected = isVisual && visualMode === "video" && isGrokVideoModel(state.settings.videoModel);
   const documentedVeo31Selected = isVisual && visualMode === "video" && isDocumentedVeo31Model(state.settings.videoModel);
-  const documentedVeo31FastSelected = documentedVeo31Selected && isDocumentedVeo31FastModel(state.settings.videoModel);
+  const documentedVeo31ReferencesUnsupported = documentedVeo31Selected
+    && (isDocumentedVeo31FastModel(state.settings.videoModel)
+      || usesDeepRouterDocumentedVeo31Compatibility(state.settings.videoModel));
   els.visualToolbar.hidden = !isVisual;
   els.chatToolbar.hidden = isVisual;
   els.chatWebToggle.classList.toggle("active", !!state.settings.chatWeb);
@@ -1274,9 +1276,12 @@ function renderControls() {
     : documentedVeo31Selected
       ? "上传 1-3 张主体或风格参考图"
     : visualMode === "video" ? "上传视频参考图" : "上传图片进行图生图";
-  els.uploadImageRefButton.hidden = documentedVeo31FastSelected;
+  els.uploadImageRefButton.hidden = documentedVeo31ReferencesUnsupported;
   els.uploadFirstFrameButton.hidden = !isVisual || visualMode !== "video" || grokVideoSelected;
-  els.uploadLastFrameButton.hidden = !isVisual || visualMode !== "video" || grokVideoSelected;
+  els.uploadLastFrameButton.hidden = !isVisual
+    || visualMode !== "video"
+    || grokVideoSelected
+    || usesDeepRouterDocumentedVeo31Compatibility(state.settings.videoModel);
   els.uploadVideoRefButton.hidden = !isVisual || visualMode !== "video" || grokVideoSelected || documentedVeo31Selected;
   els.uploadAudioButton.hidden = !isVisual || visualMode !== "video" || grokVideoSelected || documentedVeo31Selected;
   fillQuickModelSelect();
@@ -1674,6 +1679,10 @@ function usesDeepRouterVeoCompatibility(modelId = state.settings.videoModel) {
   return isDeepRouterBaseUrl() && /^veo31fast(?:preview)?$/.test(compactId);
 }
 
+function usesDeepRouterDocumentedVeo31Compatibility(modelId = state.settings.videoModel) {
+  return isDeepRouterBaseUrl() && isDocumentedVeo31Model(modelId);
+}
+
 function usesNewApiVeoTask(modelId = state.settings.videoModel) {
   return isVeoModel(modelId)
     && isDeepRouterBaseUrl()
@@ -1784,6 +1793,7 @@ function hasVeoReferenceImages() {
 
 function isDocumentedVeo31ReferenceMode(modelId = state.settings.videoModel) {
   return isDocumentedVeo31Model(modelId)
+    && !usesDeepRouterDocumentedVeo31Compatibility(modelId)
     && !isDocumentedVeo31FastModel(modelId)
     && !draftMedia.firstFrame
     && !draftMedia.lastFrame
@@ -1799,7 +1809,10 @@ function normalizeDocumentedVeo31DraftForModel(modelId = state.settings.videoMod
   if (!isDocumentedVeo31Model(modelId)) return;
   draftMedia.videoReferences = [];
   draftMedia.audio = null;
-  if (isDocumentedVeo31FastModel(modelId)) draftMedia.videoImages = [];
+  if (isDocumentedVeo31FastModel(modelId) || usesDeepRouterDocumentedVeo31Compatibility(modelId)) {
+    draftMedia.videoImages = [];
+    draftMedia.lastFrame = null;
+  }
   else draftMedia.videoImages = draftMedia.videoImages.slice(0, 3);
 }
 
@@ -3134,6 +3147,9 @@ function buildVideoRequest(prompt, profile) {
   if (profile?.provider === "veo" && usesDeepRouterVeoCompatibility(settings.videoModel)) {
     return buildCompatibleMultipartVideoRequest(prompt, profile);
   }
+  if (profile?.provider === "veo" && usesDeepRouterDocumentedVeo31Compatibility(settings.videoModel)) {
+    return buildDeepRouterVeo31VideoRequest(prompt, profile);
+  }
   if (profile?.provider === "veo" && isDocumentedVeo31Model(settings.videoModel)) {
     return buildVeoVideoRequest(prompt, profile);
   }
@@ -3437,6 +3453,52 @@ function buildNewApiVeoVideoRequest(prompt, profile) {
   };
 }
 
+function buildDeepRouterVeo31VideoRequest(prompt, profile) {
+  const modelId = state.settings.videoModel;
+  const duration = effectiveVideoDuration(modelId);
+  const resolution = effectiveVideoResolution(modelId);
+  const aspectRatio = effectiveVideoAspectRatio(modelId);
+  const size = veoCompatibleVideoSize(resolution, aspectRatio);
+  if (draftMedia.lastFrame || draftMedia.videoImages.length) {
+    throw new Error("DeepRouter 的 Veo 兼容接口仅支持文生视频或单张首帧图生视频");
+  }
+  const common = {
+    model: modelId,
+    prompt,
+    seconds: String(duration),
+    size,
+  };
+  const firstFrame = draftMedia.firstFrame;
+  if (!firstFrame) {
+    return {
+      label: `${profile?.vendor || "Google"} Veo OpenAI 兼容参数`,
+      endpoint: "/v1/videos",
+      headers: { ...rawAuthHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...common,
+        metadata: { durationSeconds: duration, resolution, aspectRatio },
+      }),
+    };
+  }
+  const form = new FormData();
+  Object.entries(common).forEach(([key, value]) => form.append(key, value));
+  form.append("resolution", resolution);
+  form.append("aspectRatio", aspectRatio);
+  if (firstFrame.file) form.append("input_reference", firstFrame.file, firstFrame.name);
+  else form.append("input_reference", firstFrame.dataUrl);
+  return {
+    label: `${profile?.vendor || "Google"} Veo OpenAI 兼容参数`,
+    endpoint: "/v1/videos",
+    headers: rawAuthHeaders(),
+    body: form,
+  };
+}
+
+function veoCompatibleVideoSize(resolution, aspectRatio) {
+  if (resolution === "1080p") return aspectRatio === "9:16" ? "1080x1920" : "1920x1080";
+  return aspectRatio === "9:16" ? "720x1280" : "1280x720";
+}
+
 function buildVeoVideoRequest(prompt, profile) {
   const settings = state.settings;
   const modelId = settings.videoModel;
@@ -3508,6 +3570,9 @@ function videoGenerationEndpoint(profile) {
   }
   if (profile?.provider === "seedance" && defaultLike) return "/v1/video/generations";
   if (profile?.provider === "veo" && usesDeepRouterVeoCompatibility(state.settings.videoModel) && defaultLike) return "/v1/videos";
+  if (profile?.provider === "veo" && usesDeepRouterDocumentedVeo31Compatibility(state.settings.videoModel)) {
+    return "/v1/videos";
+  }
   if (profile?.provider === "veo" && isDocumentedVeo31Model(state.settings.videoModel)) {
     const modelId = String(state.settings.videoModel || "").replace(/^models\//, "");
     return `/v1beta/models/${encodeURIComponent(modelId)}:predictLongRunning`;
@@ -3693,7 +3758,7 @@ function videoStatusEndpointForTask(task) {
     return "/api/v3/contents/generations/tasks/{id}";
   }
   if (task?.provider === "seedance" && defaultLike) return "/v1/video/generations/{id}";
-  if (task?.provider === "veo" && task.requestEndpoint === "/v1/videos" && defaultLike) return "/v1/videos/{id}";
+  if (task?.provider === "veo" && task.requestEndpoint === "/v1/videos") return "/v1/videos/{id}";
   if (task?.provider === "veo" && task.requestEndpoint === "/v1/video/generations" && defaultLike) {
     return "/v1/video/generations/{id}";
   }
@@ -4362,8 +4427,9 @@ async function handleReferenceFiles(event, kind) {
     const items = await Promise.all(files.map((file) => readMediaFile(file)));
     if (kind === "image-reference") {
       if (state.settings.visualMode === "video") {
-        if (isDocumentedVeo31FastModel(state.settings.videoModel)) {
-          throw new Error("Veo 3.1 Fast 不支持参考图，请使用首帧功能");
+        if (isDocumentedVeo31FastModel(state.settings.videoModel)
+            || usesDeepRouterDocumentedVeo31Compatibility(state.settings.videoModel)) {
+          throw new Error("当前 Veo 3.1 接口不支持多参考图，请使用首帧功能");
         }
         if (isDocumentedVeo31Model(state.settings.videoModel)) {
           draftMedia.firstFrame = null;
@@ -5162,7 +5228,9 @@ function videoResultUrlsForTask(data, task) {
   if (media.length) return media;
   const status = String(extractTaskStatus(data) || "").toLowerCase();
   const completed = ["succeeded", "success", "completed", "complete", "finished", "done"].includes(status);
-  if (!completed || task?.provider !== "xai" || !task?.jobId) return [];
+  const supportsContentDownload = task?.provider === "xai"
+    || (task?.provider === "veo" && task?.requestEndpoint === "/v1/videos");
+  if (!completed || !supportsContentDownload || !task?.jobId) return [];
   const id = encodeVideoTaskId(task.jobId, task);
   return [apiUrl(`/v1/videos/${id}/content`)];
 }
@@ -5588,6 +5656,9 @@ function imageModeLabel(profile) {
 function videoModeLabel(profile) {
   if (profile?.provider === "sora") return "NewAPI Sora 参数";
   if (profile?.provider === "veo" && usesDeepRouterVeoCompatibility(state.settings.videoModel)) return "Veo Multipart 参数";
+  if (profile?.provider === "veo" && usesDeepRouterDocumentedVeo31Compatibility(state.settings.videoModel)) {
+    return "Veo OpenAI 兼容参数";
+  }
   if (profile?.provider === "veo" && usesNewApiVeoTask(state.settings.videoModel)) return "NewAPI Veo 参数";
   const style = resolveVideoApiStyle(profile);
   if (style === "gemini") return "Gemini/Veo 参数";
