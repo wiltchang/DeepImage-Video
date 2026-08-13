@@ -5230,7 +5230,7 @@ async function responseError(response) {
     const json = JSON.parse(text);
     return deepestApiErrorMessage(json) || `${response.status} ${response.statusText}`;
   } catch {
-    return text || `${response.status} ${response.statusText}`;
+    return summarizeApiResponseText(text, response.status, response.statusText);
   }
 }
 
@@ -5239,12 +5239,23 @@ async function parseApiJsonResponse(response, label = "API 接口") {
   try {
     return JSON.parse(text);
   } catch {
-    const error = new Error(/<html|<!doctype/i.test(text)
-      ? `${label}返回了网页而不是 JSON，当前服务未映射该请求端点`
-      : `${label}返回了无法解析的数据：${text.trim().slice(0, 160) || "空响应"}`);
+    const error = new Error(`${label}：${summarizeApiResponseText(text, response.status, response.statusText)}`);
     error.code = "invalid_json_response";
     throw error;
   }
+}
+
+function summarizeApiResponseText(text, status = 0, statusText = "") {
+  const value = String(text || "").trim();
+  if (/<html|<!doctype|_next\/static|This page could not be found/i.test(value)) {
+    const statusLabel = status ? `HTTP ${status}` : "上游 404";
+    if (isKlingModel(state.settings.videoModel)) {
+      return `Kling 上游返回了网页而不是 JSON（${statusLabel}）。DeepRouter 当前渠道未映射 Kling 3.0 Omni 专用端点；渠道 API 地址应为 https://api.bananarouter.com，并需要服务端支持 Kling 3.0 Omni TaskAdaptor。`;
+    }
+    return `上游接口返回了网页而不是 JSON（${statusLabel}），请检查渠道 API 地址和端点映射。`;
+  }
+  if (!value) return status ? `${status} ${statusText}`.trim() : "接口返回了空响应";
+  return value.length > 500 ? `${value.slice(0, 500)}...` : value;
 }
 
 function deepestApiErrorMessage(value, depth = 0) {
@@ -5252,6 +5263,9 @@ function deepestApiErrorMessage(value, depth = 0) {
   if (typeof value === "string") {
     const text = value.trim();
     if (!text) return "";
+    if (/<html|<!doctype|_next\/static|This page could not be found/i.test(text)) {
+      return summarizeApiResponseText(text);
+    }
     const embedded = parseJsonPayload(text);
     return embedded ? deepestApiErrorMessage(embedded, depth + 1) || text : text;
   }
@@ -6128,6 +6142,7 @@ if (typeof module !== "undefined" && module.exports) {
     normalizeVeoDuration,
     normalizeState,
     parseApiJsonResponse,
+    responseError,
     parseLinkedNewApiSettings,
     resolveWebSearchModel,
     resolveGeminiImageRoute,

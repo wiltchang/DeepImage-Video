@@ -28,6 +28,7 @@ const {
   normalizeKlingDuration,
   normalizeState,
   parseApiJsonResponse,
+  responseError,
   shouldStopMissingVideoTaskPolling,
   setTestDraftMedia,
   setTestSettings,
@@ -950,8 +951,26 @@ test("non-JSON video responses report an endpoint mapping error", async () => {
   });
   await assert.rejects(
     parseApiJsonResponse(response, "视频创建接口"),
-    (error) => error.code === "invalid_json_response" && /未映射该请求端点/.test(error.message)
+    (error) => error.code === "invalid_json_response" && /Kling 3\.0 Omni TaskAdaptor/.test(error.message)
   );
+});
+
+test("Kling HTML errors are shortened into an actionable channel message", async () => {
+  setTestSettings({ videoModel: "kling-3.0-omni" });
+  const html = '<!doctype html><script src="/_next/static/chunks/app.js"></script><h1>404</h1><p>This page could not be found.</p>';
+  const message = await responseError(new Response(html, {
+    status: 404,
+    statusText: "Not Found",
+    headers: { "Content-Type": "text/html" },
+  }));
+  assert.match(message, /api\.bananarouter\.com/);
+  assert.match(message, /Kling 3\.0 Omni TaskAdaptor/);
+  assert.ok(message.length < 300);
+  assert.equal(message.includes("_next/static"), false);
+
+  const nested = extractErrorMessage({ message: html });
+  assert.match(nested, /Kling 3\.0 Omni TaskAdaptor/);
+  assert.equal(nested.includes("_next/static"), false);
 });
 
 test("Veo 3.1 operation responses expose the generated video URI", () => {
