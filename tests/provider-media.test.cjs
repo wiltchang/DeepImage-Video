@@ -27,6 +27,7 @@ const {
   normalizeModelRecords,
   normalizeKlingDuration,
   normalizeState,
+  parseApiJsonResponse,
   shouldStopMissingVideoTaskPolling,
   setTestDraftMedia,
   setTestSettings,
@@ -808,8 +809,9 @@ test("Kling models are classified into their own video provider group", () => {
   ]);
 });
 
-test("Kling 3.0 text generation uses its dedicated documented endpoint", () => {
+test("DeepRouter Kling 3.0 uses the mapped NewAPI video endpoint", () => {
   const request = buildVideo("kling-3.0", "kling", {
+    baseUrl: "https://deeprouter.top",
     videoAspectRatio: "9:16",
     videoResolution: "1080p",
     videoDuration: 7,
@@ -818,9 +820,9 @@ test("Kling 3.0 text generation uses its dedicated documented endpoint", () => {
   });
   const body = JSON.parse(request.body);
 
-  assert.equal(request.endpoint, "/text-to-video/kling-3.0");
+  assert.equal(request.endpoint, "/v1/video/generations");
   assert.equal(request.headers.Authorization, "Bearer test-key");
-  assert.equal(body.model, undefined);
+  assert.equal(body.model, "kling-3.0");
   assert.match(body.prompt, /商业广告质感/);
   assert.deepEqual(body.settings, {
     duration: 7,
@@ -828,11 +830,19 @@ test("Kling 3.0 text generation uses its dedicated documented endpoint", () => {
     audio: "native",
     aspect_ratio: "9:16",
   });
+  assert.deepEqual(body.contents, [{ type: "prompt", text: body.prompt }]);
+  assert.deepEqual(body.options, {});
+  assert.equal(body.seconds, "7");
+  assert.equal(videoStatusEndpointForTask({
+    provider: "kling",
+    requestEndpoint: request.endpoint,
+  }), "/v1/video/generations/{id}");
 });
 
-test("Kling 3.0 image generation sends prompt and first frame as contents", () => {
+test("BananaRouter Kling 3.0 image generation uses its dedicated endpoint", () => {
   const firstFrame = media("first.png");
   const request = buildVideo("kling-3.0", "kling", {
+    baseUrl: "https://api.bananarouter.com",
     videoDuration: 5,
     videoStyle: "auto",
   }, { videoImages: [firstFrame] });
@@ -845,13 +855,15 @@ test("Kling 3.0 image generation sends prompt and first frame as contents", () =
     { type: "first_frame", url: firstFrame.dataUrl },
   ]);
   assert.equal(body.settings.aspect_ratio, undefined);
+  assert.deepEqual(body.options, {});
 });
 
-test("Kling Omni maps first, last, and reference images into documented contents", () => {
+test("BananaRouter Kling Omni maps frames and references into documented contents", () => {
   const firstFrame = media("first.png");
   const lastFrame = media("last.png");
   const reference = media("reference.png");
   const request = buildVideo("kling-3.0-omni", "kling", {
+    baseUrl: "https://api.bananarouter.com",
     videoAspectRatio: "16:9",
     videoResolution: "720p",
     videoDuration: 15,
@@ -873,6 +885,33 @@ test("Kling Omni maps first, last, and reference images into documented contents
     audio: "off",
     aspect_ratio: "16:9",
   });
+  assert.deepEqual(body.options, {});
+  assert.equal(videoStatusEndpointForTask({
+    provider: "kling",
+    requestEndpoint: request.endpoint,
+  }), "/tasks?task_ids={id}");
+});
+
+test("DeepRouter Kling Omni includes native contents on the NewAPI route", () => {
+  const reference = media("reference.png");
+  const request = buildVideo("kling-3.0-omni", "kling", {
+    baseUrl: "https://deeprouter.top",
+    videoAspectRatio: "9:16",
+    videoResolution: "1080p",
+    videoDuration: 6,
+    videoStyle: "auto",
+  }, { videoImages: [reference] });
+  const body = JSON.parse(request.body);
+
+  assert.equal(request.endpoint, "/v1/video/generations");
+  assert.equal(body.model, "kling-3.0-omni");
+  assert.deepEqual(body.contents, [
+    { type: "prompt", text: "测试视频提示词" },
+    { type: "refer_image", url: reference.dataUrl, id: "image_1" },
+  ]);
+  assert.equal(body.duration, 6);
+  assert.equal(body.aspect_ratio, "9:16");
+  assert.equal(body.resolution, "1080p");
 });
 
 test("Kling controls and polling match the provider contract", () => {
@@ -902,6 +941,17 @@ test("Kling controls and polling match the provider contract", () => {
   assert.equal(extractJobId({ code: 0, data: { id: "req_abc123def456", status: "submitted" } }), "req_abc123def456");
   assert.equal(extractTaskStatus(response), "succeeded");
   assert.deepEqual(videoResultUrlsForTask(response, { provider: "kling" }), ["https://cdn.example.com/kling.mp4"]);
+});
+
+test("non-JSON video responses report an endpoint mapping error", async () => {
+  const response = new Response("<!doctype html><title>New API</title>", {
+    status: 200,
+    headers: { "Content-Type": "text/html" },
+  });
+  await assert.rejects(
+    parseApiJsonResponse(response, "视频创建接口"),
+    (error) => error.code === "invalid_json_response" && /未映射该请求端点/.test(error.message)
+  );
 });
 
 test("Veo 3.1 operation responses expose the generated video URI", () => {

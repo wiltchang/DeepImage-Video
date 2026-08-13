@@ -3162,7 +3162,7 @@ async function submitVideoTask(task, requestPrompt, profile, signal) {
       });
       if (!response.ok) throw new Error(await responseError(response));
     }
-    const data = await response.json();
+    const data = await parseApiJsonResponse(response, "视频创建接口");
     task.jobId = extractJobId(data);
     task.rawStatus = extractTaskStatus(data) || task.rawStatus;
     const media = videoResultUrlsForTask(data, task);
@@ -3258,15 +3258,6 @@ function buildKlingVideoRequest(prompt, profile) {
   };
   const textToVideo = !omni && !firstFrame;
   if (textToVideo || omni) settings.aspect_ratio = effectiveVideoAspectRatio(modelId);
-  if (textToVideo) {
-    return {
-      label: `${profile?.vendor || "Kling"} 文生视频参数`,
-      endpoint: "/text-to-video/kling-3.0",
-      headers: authHeaders(),
-      body: JSON.stringify({ prompt: styledPrompt, settings }),
-    };
-  }
-
   const contents = [{ type: "prompt", text: styledPrompt }];
   if (firstFrame) contents.push(klingImageContent("first_frame", firstFrame, omni ? "first_frame_1" : ""));
   if (omni && draftMedia.lastFrame) {
@@ -3277,11 +3268,47 @@ function buildKlingVideoRequest(prompt, profile) {
       contents.push(klingImageContent("refer_image", item, `image_${index + 1}`));
     });
   }
+
+  if (!isBananaRouterBaseUrl()) {
+    const duration = effectiveVideoDuration(modelId);
+    const aspectRatio = effectiveVideoAspectRatio(modelId);
+    const resolution = effectiveVideoResolution(modelId);
+    return {
+      label: `${profile?.vendor || "Kling"} NewAPI 兼容参数`,
+      endpoint: "/v1/video/generations",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        model: modelId,
+        prompt: styledPrompt,
+        contents,
+        settings,
+        options: {},
+        duration,
+        duration_seconds: duration,
+        seconds: String(duration),
+        aspect_ratio: aspectRatio,
+        ratio: aspectRatio,
+        resolution,
+        audio: settings.audio,
+        generate_audio: settings.audio === "native",
+      }),
+    };
+  }
+
+  if (textToVideo) {
+    return {
+      label: `${profile?.vendor || "Kling"} 文生视频参数`,
+      endpoint: "/text-to-video/kling-3.0",
+      headers: authHeaders(),
+      body: JSON.stringify({ prompt: styledPrompt, settings, options: {} }),
+    };
+  }
+
   return {
     label: `${profile?.vendor || "Kling"} ${omni ? "Omni" : "图生视频"}参数`,
     endpoint: omni ? "/omni-video/kling-3.0-omni" : "/image-to-video/kling-3.0",
     headers: authHeaders(),
-    body: JSON.stringify({ contents, settings }),
+    body: JSON.stringify({ contents, settings, options: {} }),
   };
 }
 
@@ -3795,7 +3822,7 @@ async function refreshVideoTaskOnce(task) {
       renderImages();
       return "pending";
     }
-    const data = await response.json();
+    const data = await parseApiJsonResponse(response, "视频任务查询接口");
     const payloadError = extractErrorMessage(data);
     if (failMissingVideoTaskAfterRetries(task, payloadError)) return "failed";
     task.missingTaskPolls = 0;
@@ -3834,6 +3861,14 @@ async function refreshVideoTaskOnce(task) {
     return "pending";
   } catch (error) {
     task.lastPollError = normalizeError(error);
+    if (error?.code === "invalid_json_response") {
+      task.status = "error";
+      task.error = task.lastPollError;
+      saveState();
+      renderImages();
+      showToast(task.error, true);
+      return "failed";
+    }
     saveState();
     renderImages();
     return "pending";
@@ -3860,7 +3895,11 @@ function shouldStopMissingVideoTaskPolling(attempts) {
 function videoStatusEndpointForTask(task) {
   const endpoint = state.settings.videoStatusEndpoint || DEFAULT_SETTINGS.videoStatusEndpoint;
   const defaultLike = !endpoint || endpoint === DEFAULT_SETTINGS.videoStatusEndpoint || endpoint === "/v1/videos/{id}";
-  if (task?.provider === "kling") return "/tasks?task_ids={id}";
+  if (task?.provider === "kling") {
+    return task.requestEndpoint === "/v1/video/generations"
+      ? "/v1/video/generations/{id}"
+      : "/tasks?task_ids={id}";
+  }
   if (task?.provider === "xai" && /^\/v1\/videos(?:\/generations)?$/i.test(String(task.requestEndpoint || ""))) {
     return "/v1/videos/{id}";
   }
@@ -5195,6 +5234,19 @@ async function responseError(response) {
   }
 }
 
+async function parseApiJsonResponse(response, label = "API 接口") {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    const error = new Error(/<html|<!doctype/i.test(text)
+      ? `${label}返回了网页而不是 JSON，当前服务未映射该请求端点`
+      : `${label}返回了无法解析的数据：${text.trim().slice(0, 160) || "空响应"}`);
+    error.code = "invalid_json_response";
+    throw error;
+  }
+}
+
 function deepestApiErrorMessage(value, depth = 0) {
   if (value === null || value === undefined || depth > 6) return "";
   if (typeof value === "string") {
@@ -6075,6 +6127,7 @@ if (typeof module !== "undefined" && module.exports) {
     normalizeSora2Duration,
     normalizeVeoDuration,
     normalizeState,
+    parseApiJsonResponse,
     parseLinkedNewApiSettings,
     resolveWebSearchModel,
     resolveGeminiImageRoute,
