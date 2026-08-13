@@ -25,6 +25,7 @@ const {
   generatedResultToMedia,
   materializeVideoUrls,
   normalizeModelRecords,
+  normalizeKlingDuration,
   normalizeState,
   shouldStopMissingVideoTaskPolling,
   setTestDraftMedia,
@@ -55,6 +56,7 @@ function buildVideo(model, provider, overrides = {}, draft = {}) {
     videoResolution: "720p",
     videoDuration: 8,
     videoAudio: true,
+    videoStyle: "auto",
     videoApiStyle: "auto",
     videoEndpoint: "/v1/video/generations",
     videoStatusEndpoint: "/v1/video/generations/{id}",
@@ -773,6 +775,133 @@ test("Veo 3.1 controls expose only documented durations, resolutions, and ratios
   setTestDraftMedia({ videoImages: [media("reference.png")] });
   assert.deepEqual(videoDurationOptionsForModel().map((option) => option.value), ["8"]);
   assert.deepEqual(videoAspectOptionsForModel().map((option) => option.value), ["16:9"]);
+});
+
+test("Veo video requests carry the selected style through their prompt", () => {
+  const deepRouter = buildVideo("veo-3.1-generate-preview", "veo", {
+    baseUrl: "https://deeprouter.top",
+    videoStyle: "documentary",
+  });
+  assert.match(JSON.parse(deepRouter.body).prompt, /纪实摄影风格/);
+
+  const native = buildVideo("veo-3.1-fast-generate-preview", "veo", {
+    baseUrl: "https://api.bananarouter.com",
+    videoStyle: "animation",
+  });
+  assert.match(JSON.parse(native.body).instances[0].prompt, /动画风格/);
+
+  const automatic = buildVideo("veo-3.1-fast-generate-preview", "veo", {
+    baseUrl: "https://api.bananarouter.com",
+    videoStyle: "auto",
+  });
+  assert.equal(JSON.parse(automatic.body).instances[0].prompt, "测试视频提示词");
+});
+
+test("Kling models are classified into their own video provider group", () => {
+  const records = normalizeModelRecords([
+    { id: "kling-3.0", type: "model" },
+    { id: "kling-3.0-omni", type: "model" },
+  ]);
+  assert.deepEqual(records.map(({ id, vendor, type, provider }) => [id, vendor, type, provider]), [
+    ["kling-3.0", "Kling", "video", "kling"],
+    ["kling-3.0-omni", "Kling", "video", "kling"],
+  ]);
+});
+
+test("Kling 3.0 text generation uses its dedicated documented endpoint", () => {
+  const request = buildVideo("kling-3.0", "kling", {
+    videoAspectRatio: "9:16",
+    videoResolution: "1080p",
+    videoDuration: 7,
+    videoStyle: "commercial",
+    videoAudio: true,
+  });
+  const body = JSON.parse(request.body);
+
+  assert.equal(request.endpoint, "/text-to-video/kling-3.0");
+  assert.equal(request.headers.Authorization, "Bearer test-key");
+  assert.equal(body.model, undefined);
+  assert.match(body.prompt, /商业广告质感/);
+  assert.deepEqual(body.settings, {
+    duration: 7,
+    resolution: "1080p",
+    audio: "native",
+    aspect_ratio: "9:16",
+  });
+});
+
+test("Kling 3.0 image generation sends prompt and first frame as contents", () => {
+  const firstFrame = media("first.png");
+  const request = buildVideo("kling-3.0", "kling", {
+    videoDuration: 5,
+    videoStyle: "auto",
+  }, { videoImages: [firstFrame] });
+  const body = JSON.parse(request.body);
+
+  assert.equal(request.endpoint, "/image-to-video/kling-3.0");
+  assert.equal(body.prompt, undefined);
+  assert.deepEqual(body.contents, [
+    { type: "prompt", text: "测试视频提示词" },
+    { type: "first_frame", url: firstFrame.dataUrl },
+  ]);
+  assert.equal(body.settings.aspect_ratio, undefined);
+});
+
+test("Kling Omni maps first, last, and reference images into documented contents", () => {
+  const firstFrame = media("first.png");
+  const lastFrame = media("last.png");
+  const reference = media("reference.png");
+  const request = buildVideo("kling-3.0-omni", "kling", {
+    videoAspectRatio: "16:9",
+    videoResolution: "720p",
+    videoDuration: 15,
+    videoAudio: false,
+    videoStyle: "auto",
+  }, { firstFrame, lastFrame, videoImages: [reference] });
+  const body = JSON.parse(request.body);
+
+  assert.equal(request.endpoint, "/omni-video/kling-3.0-omni");
+  assert.deepEqual(body.contents, [
+    { type: "prompt", text: "测试视频提示词" },
+    { type: "first_frame", url: firstFrame.dataUrl, id: "first_frame_1" },
+    { type: "last_frame", url: lastFrame.dataUrl, id: "last_frame_1" },
+    { type: "refer_image", url: reference.dataUrl, id: "image_1" },
+  ]);
+  assert.deepEqual(body.settings, {
+    duration: 15,
+    resolution: "720p",
+    audio: "off",
+    aspect_ratio: "16:9",
+  });
+});
+
+test("Kling controls and polling match the provider contract", () => {
+  setTestSettings({
+    videoModel: "kling-3.0",
+    videoDuration: 2,
+    videoResolution: "4k",
+    videoAspectRatio: "1:1",
+  });
+  setTestDraftMedia({});
+  assert.deepEqual(videoDurationOptionsForModel().map((option) => option.value),
+    Array.from({ length: 13 }, (_, index) => String(index + 3)));
+  assert.deepEqual(videoResolutionOptionsForModel().map((option) => option.value), ["720p", "1080p"]);
+  assert.deepEqual(videoAspectOptionsForModel().map((option) => option.value), ["16:9", "9:16"]);
+  assert.equal(normalizeKlingDuration(2), 3);
+  assert.equal(normalizeKlingDuration(16), 15);
+  assert.equal(videoStatusEndpointForTask({ provider: "kling" }), "/tasks?task_ids={id}");
+
+  const response = {
+    code: 0,
+    data: [{
+      id: "req_abc123def456",
+      status: "succeeded",
+      outputs: [{ type: "video", url: "https://cdn.example.com/kling.mp4", duration: 7 }],
+    }],
+  };
+  assert.equal(extractJobId({ code: 0, data: { id: "req_abc123def456", status: "submitted" } }), "req_abc123def456");
+  assert.equal(extractTaskStatus(response), "succeeded");
+  assert.deepEqual(videoResultUrlsForTask(response, { provider: "kling" }), ["https://cdn.example.com/kling.mp4"]);
 });
 
 test("Veo 3.1 operation responses expose the generated video URI", () => {

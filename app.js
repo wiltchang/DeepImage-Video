@@ -1253,6 +1253,8 @@ function renderControls() {
   const isVisual = activeMode === "image";
   const visualMode = state.settings.visualMode;
   const grokVideoSelected = isVisual && visualMode === "video" && isGrokVideoModel(state.settings.videoModel);
+  const klingVideoSelected = isVisual && visualMode === "video" && isKlingModel(state.settings.videoModel);
+  const klingOmniSelected = klingVideoSelected && isKlingOmniModel(state.settings.videoModel);
   const documentedVeo31Selected = isVisual && visualMode === "video" && isDocumentedVeo31Model(state.settings.videoModel);
   const documentedVeo31ReferencesUnsupported = documentedVeo31Selected
     && (isDocumentedVeo31FastModel(state.settings.videoModel)
@@ -1273,17 +1275,20 @@ function renderControls() {
   els.thinkingToggle.hidden = isVisual;
   els.uploadImageRefButton.title = grokVideoSelected
     ? "上传一张参考图进行图生视频"
+    : klingOmniSelected
+      ? "上传最多三张 Kling Omni 参考图"
     : documentedVeo31Selected
       ? "上传 1-3 张主体或风格参考图"
     : visualMode === "video" ? "上传视频参考图" : "上传图片进行图生图";
-  els.uploadImageRefButton.hidden = documentedVeo31ReferencesUnsupported;
+  els.uploadImageRefButton.hidden = documentedVeo31ReferencesUnsupported || (klingVideoSelected && !klingOmniSelected);
   els.uploadFirstFrameButton.hidden = !isVisual || visualMode !== "video" || grokVideoSelected;
   els.uploadLastFrameButton.hidden = !isVisual
     || visualMode !== "video"
     || grokVideoSelected
+    || (klingVideoSelected && !klingOmniSelected)
     || usesDeepRouterDocumentedVeo31Compatibility(state.settings.videoModel);
-  els.uploadVideoRefButton.hidden = !isVisual || visualMode !== "video" || grokVideoSelected || documentedVeo31Selected;
-  els.uploadAudioButton.hidden = !isVisual || visualMode !== "video" || grokVideoSelected || documentedVeo31Selected;
+  els.uploadVideoRefButton.hidden = !isVisual || visualMode !== "video" || grokVideoSelected || klingVideoSelected || documentedVeo31Selected;
+  els.uploadAudioButton.hidden = !isVisual || visualMode !== "video" || grokVideoSelected || klingVideoSelected || documentedVeo31Selected;
   fillQuickModelSelect();
   const selectedModel = activeMode === "image"
     ? state.settings.visualMode === "video"
@@ -1362,7 +1367,7 @@ function renderOutputOptions() {
   if (videoResolutionRow) videoResolutionRow.hidden = usesPixelSize;
   if (videoCountRow) videoCountRow.hidden = !isSeedanceModel(state.settings.videoModel);
   const documentedVeo31 = isDocumentedVeo31Model(state.settings.videoModel);
-  if (videoStyleRow) videoStyleRow.hidden = usesOfficialGrokRequest || documentedVeo31;
+  if (videoStyleRow) videoStyleRow.hidden = usesOfficialGrokRequest;
   if (videoAudioRow) videoAudioRow.hidden = usesOfficialGrokRequest || documentedVeo31;
   renderOptionGroup(els.videoResolutionGroup, "videoResolution", videoResolutionOptionsForModel(), effectiveVideoResolution());
   renderStepperOptionGroup(
@@ -1497,6 +1502,9 @@ function imageQualityOptionsForModel() {
 
 function videoResolutionOptionsForModel() {
   const modelId = state.settings.videoModel;
+  if (isKlingModel(modelId)) {
+    return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["720p", "1080p"].includes(option.value));
+  }
   if (isSeedance25Model(modelId)) {
     return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["480p", "720p"].includes(option.value));
   }
@@ -1524,6 +1532,9 @@ function videoResolutionOptionsForModel() {
 
 function videoAspectOptionsForModel() {
   const modelId = state.settings.videoModel;
+  if (isKlingModel(modelId)) {
+    return VIDEO_ASPECT_OPTIONS.filter((option) => ["16:9", "9:16"].includes(option.value));
+  }
   if (isSora2Model(modelId)) {
     return [{ value: "1280x720", label: "1280x720" }];
   }
@@ -1551,6 +1562,12 @@ function videoAspectOptionsForModel() {
 
 function videoDurationOptionsForModel() {
   const modelId = state.settings.videoModel;
+  if (isKlingModel(modelId)) {
+    return Array.from({ length: 13 }, (_, index) => {
+      const seconds = String(index + 3);
+      return { value: seconds, label: `${seconds}s` };
+    });
+  }
   if (isSora2Model(modelId)) {
     return [{ value: "12", label: "12s" }];
   }
@@ -1632,6 +1649,14 @@ function isVeoModel(modelId) {
   return /(?:^|[-_.])veo(?:[-_.]|\d|$)/i.test(String(modelId || ""));
 }
 
+function isKlingModel(modelId) {
+  return /^kling[-_.]3[-_.]0(?:$|[-_.]omni$)/i.test(String(modelId || ""));
+}
+
+function isKlingOmniModel(modelId) {
+  return /^kling[-_.]3[-_.]0[-_.]omni$/i.test(String(modelId || ""));
+}
+
 function isVeo2Model(modelId) {
   return /veo[-_.]?2(?:$|[-_.])/i.test(String(modelId || ""));
 }
@@ -1696,6 +1721,7 @@ function usesPixelVideoSizeOptions(modelId = state.settings.videoModel) {
 
 function effectiveVideoAspectRatio(modelId = state.settings.videoModel) {
   const ratio = state.settings.videoAspectRatio;
+  if (isKlingModel(modelId)) return ["16:9", "9:16"].includes(ratio) ? ratio : "16:9";
   if (isSora2Model(modelId)) {
     return "1280x720";
   }
@@ -1720,6 +1746,7 @@ function effectiveVideoAspectRatio(modelId = state.settings.videoModel) {
 
 function effectiveVideoResolution(modelId = state.settings.videoModel) {
   const resolution = state.settings.videoResolution;
+  if (isKlingModel(modelId)) return ["720p", "1080p"].includes(resolution) ? resolution : "720p";
   if (isSeedance25Model(modelId)) return ["480p", "720p"].includes(resolution) ? resolution : "720p";
   if (isSeedance2FastModel(modelId)) return ["480p", "720p"].includes(resolution) ? resolution : "720p";
   if (isSeedance2Model(modelId)) return ["480p", "720p", "1080p", "4k"].includes(resolution) ? resolution : "720p";
@@ -1747,6 +1774,7 @@ function normalizeSeedDanceDuration(value, modelId = state.settings.videoModel) 
 
 function effectiveVideoDuration(modelId = state.settings.videoModel) {
   const profile = getModelProfile(modelId);
+  if (isKlingModel(modelId)) return normalizeKlingDuration(state.settings.videoDuration);
   if (profile?.provider === "seedance") {
     if (isSeedance25Model(modelId) && draftMedia.videoReferences.length) return -1;
     return normalizeSeedDanceDuration(state.settings.videoDuration, modelId);
@@ -1766,6 +1794,11 @@ function effectiveVideoCount(modelId = state.settings.videoModel) {
 function normalizeGrokVideoDuration(value, modelId = state.settings.videoModel) {
   const duration = Number(value);
   return Math.min(15, Math.max(1, Number.isFinite(duration) ? Math.round(duration) : 8));
+}
+
+function normalizeKlingDuration(value) {
+  const duration = Number(value);
+  return Math.min(15, Math.max(3, Number.isFinite(duration) ? Math.round(duration) : 5));
 }
 
 function normalizeSora2Duration(value, modelId = state.settings.videoModel) {
@@ -1843,6 +1876,7 @@ function setVisualOption(key, value) {
 function effectiveVideoDurationForValue(value) {
   const modelId = state.settings.videoModel;
   const profile = getModelProfile(modelId);
+  if (isKlingModel(modelId)) return normalizeKlingDuration(value);
   if (profile?.provider === "seedance") return normalizeSeedDanceDuration(value, modelId);
   if (isSora2Model(modelId)) return normalizeSora2Duration(value, modelId);
   if (isGrokVideoModel(modelId)) return normalizeGrokVideoDuration(value, modelId);
@@ -3030,6 +3064,19 @@ function imagePromptWithSelectedStyle(prompt, modelId = state.settings.imageMode
   return controls.length ? `${prompt}\n\n生成要求：${controls.join("；")}。` : prompt;
 }
 
+function videoPromptWithSelectedStyle(prompt, modelId = state.settings.videoModel) {
+  if (state.settings.videoStyle === "auto") return prompt;
+  const stylePrompts = {
+    cinematic: "电影感构图、镜头运动、灯光与色彩分级",
+    realistic: "真实自然的材质、光照、动作和物理表现",
+    animation: "动画风格，动作连贯，造型稳定",
+    commercial: "商业广告质感，主体突出，画面精致",
+    documentary: "纪实摄影风格，自然镜头和环境氛围",
+  };
+  const style = stylePrompts[state.settings.videoStyle];
+  return style ? `${prompt}\n\n视频风格要求：${style}。` : prompt;
+}
+
 async function generateVideo(prompt) {
   const settings = state.settings;
   if (!settings.videoModel) return showMissingSetting("请选择视频模型");
@@ -3141,6 +3188,7 @@ async function submitVideoTask(task, requestPrompt, profile, signal) {
 function buildVideoRequest(prompt, profile) {
   const settings = state.settings;
   const apiStyle = resolveVideoApiStyle(profile);
+  if (profile?.provider === "kling") return buildKlingVideoRequest(prompt, profile);
   if (profile?.provider === "xai") return buildGrokVideoRequest(prompt, profile);
   if (profile?.provider === "sora") return buildSoraVideoRequest(prompt, profile);
   if (profile?.provider === "seedance") return buildSeedDanceVideoRequest(prompt, profile);
@@ -3178,6 +3226,68 @@ function buildVideoRequest(prompt, profile) {
       response_format: "url",
     }),
   };
+}
+
+function buildKlingVideoRequest(prompt, profile) {
+  const modelId = state.settings.videoModel;
+  const omni = isKlingOmniModel(modelId);
+  const firstFrame = draftMedia.firstFrame || (!omni ? draftMedia.videoImages[0] : null);
+  const referenceImages = omni ? draftMedia.videoImages : [];
+  if (draftMedia.lastFrame && !draftMedia.firstFrame) {
+    throw new Error("Kling 尾帧必须与首帧同时使用");
+  }
+  if (!omni && draftMedia.lastFrame) {
+    throw new Error("kling-3.0 不支持尾帧，请使用 kling-3.0-omni");
+  }
+  if (!omni && (draftMedia.videoImages.length > 1 || (draftMedia.firstFrame && draftMedia.videoImages.length))) {
+    throw new Error("kling-3.0 图生视频仅支持一张首帧图片");
+  }
+  if (draftMedia.videoReferences.length || draftMedia.audio) {
+    throw new Error("Kling 3.0 当前仅支持图片输入和原生音频生成");
+  }
+  const maxReferences = draftMedia.firstFrame && draftMedia.lastFrame ? 2 : 3;
+  if (omni && referenceImages.length > maxReferences) {
+    throw new Error(`Kling Omni 当前组合最多支持 ${maxReferences} 张参考图`);
+  }
+
+  const styledPrompt = videoPromptWithSelectedStyle(prompt, modelId);
+  const settings = {
+    duration: effectiveVideoDuration(modelId),
+    resolution: effectiveVideoResolution(modelId),
+    audio: effectiveVideoAudio(modelId) ? "native" : "off",
+  };
+  const textToVideo = !omni && !firstFrame;
+  if (textToVideo || omni) settings.aspect_ratio = effectiveVideoAspectRatio(modelId);
+  if (textToVideo) {
+    return {
+      label: `${profile?.vendor || "Kling"} 文生视频参数`,
+      endpoint: "/text-to-video/kling-3.0",
+      headers: authHeaders(),
+      body: JSON.stringify({ prompt: styledPrompt, settings }),
+    };
+  }
+
+  const contents = [{ type: "prompt", text: styledPrompt }];
+  if (firstFrame) contents.push(klingImageContent("first_frame", firstFrame, omni ? "first_frame_1" : ""));
+  if (omni && draftMedia.lastFrame) {
+    contents.push(klingImageContent("last_frame", draftMedia.lastFrame, "last_frame_1"));
+  }
+  if (omni) {
+    referenceImages.forEach((item, index) => {
+      contents.push(klingImageContent("refer_image", item, `image_${index + 1}`));
+    });
+  }
+  return {
+    label: `${profile?.vendor || "Kling"} ${omni ? "Omni" : "图生视频"}参数`,
+    endpoint: omni ? "/omni-video/kling-3.0-omni" : "/image-to-video/kling-3.0",
+    headers: authHeaders(),
+    body: JSON.stringify({ contents, settings }),
+  };
+}
+
+function klingImageContent(type, item, id) {
+  if (!item?.dataUrl) throw new Error("Kling 图片输入缺少有效数据");
+  return { type, url: item.dataUrl, ...(id ? { id } : {}) };
 }
 
 function buildSeedDanceVideoRequest(prompt, profile) {
@@ -3409,9 +3519,10 @@ function buildSoraVideoRequest(prompt, profile) {
 
 function buildCompatibleMultipartVideoRequest(prompt, profile) {
   const settings = state.settings;
+  const styledPrompt = videoPromptWithSelectedStyle(prompt, settings.videoModel);
   const form = new FormData();
   form.append("model", settings.videoModel);
-  form.append("prompt", prompt);
+  form.append("prompt", styledPrompt);
   form.append("size", effectiveVideoAspectRatio(settings.videoModel));
   const duration = effectiveVideoDuration(settings.videoModel);
   form.append("seconds", String(duration));
@@ -3439,7 +3550,7 @@ function buildNewApiVeoVideoRequest(prompt, profile) {
     headers: authHeaders(),
     body: JSON.stringify({
       model: modelId,
-      prompt,
+      prompt: videoPromptWithSelectedStyle(prompt, modelId),
       duration,
       seconds: String(duration),
       images: primaryImage?.dataUrl ? [primaryImage.dataUrl] : undefined,
@@ -3464,7 +3575,7 @@ function buildDeepRouterVeo31VideoRequest(prompt, profile) {
   }
   const common = {
     model: modelId,
-    prompt,
+    prompt: videoPromptWithSelectedStyle(prompt, modelId),
     seconds: String(duration),
     size,
   };
@@ -3502,7 +3613,7 @@ function veoCompatibleVideoSize(resolution, aspectRatio) {
 function buildVeoVideoRequest(prompt, profile) {
   const settings = state.settings;
   const modelId = settings.videoModel;
-  const instance = { prompt };
+  const instance = { prompt: videoPromptWithSelectedStyle(prompt, modelId) };
   const documentedVeo31 = isDocumentedVeo31Model(modelId);
   const referenceMode = isDocumentedVeo31ReferenceMode(modelId);
   if (documentedVeo31 && draftMedia.lastFrame && !draftMedia.firstFrame) {
@@ -3749,6 +3860,7 @@ function shouldStopMissingVideoTaskPolling(attempts) {
 function videoStatusEndpointForTask(task) {
   const endpoint = state.settings.videoStatusEndpoint || DEFAULT_SETTINGS.videoStatusEndpoint;
   const defaultLike = !endpoint || endpoint === DEFAULT_SETTINGS.videoStatusEndpoint || endpoint === "/v1/videos/{id}";
+  if (task?.provider === "kling") return "/tasks?task_ids={id}";
   if (task?.provider === "xai" && /^\/v1\/videos(?:\/generations)?$/i.test(String(task.requestEndpoint || ""))) {
     return "/v1/videos/{id}";
   }
@@ -4435,6 +4547,9 @@ async function handleReferenceFiles(event, kind) {
           draftMedia.firstFrame = null;
           draftMedia.lastFrame = null;
           draftMedia.videoImages = uniqueMedia([...draftMedia.videoImages, ...items]).slice(0, 3);
+        } else if (isKlingModel(state.settings.videoModel)) {
+          const limit = isKlingOmniModel(state.settings.videoModel) ? 3 : 1;
+          draftMedia.videoImages = uniqueMedia([...draftMedia.videoImages, ...items]).slice(0, limit);
         } else {
           draftMedia.videoImages = uniqueMedia([...draftMedia.videoImages, ...items]).slice(0, 6);
         }
@@ -5524,6 +5639,16 @@ function inferModelProfile(modelId, raw = {}) {
   const id = String(modelId || "").toLowerCase();
   const owner = String(raw.owned_by || raw.vendor || raw.provider || "").toLowerCase();
   if (!id) return null;
+  if (isKlingModel(id)) {
+    return {
+      id: modelId,
+      label: modelId,
+      vendor: "Kling",
+      type: "video",
+      provider: "kling",
+      capabilities: ["文生视频", "图生视频"],
+    };
+  }
   if (isSora2Model(id)) return { id: modelId, label: modelId, vendor: "OpenAI", type: "video", provider: "sora", capabilities: ["视频"] };
   if (id.includes("veo")) return { id: modelId, label: modelId, vendor: "Google", type: "video", provider: "veo", capabilities: ["视频"] };
   if (id.includes("seedance")) return { id: modelId, label: modelId, vendor: "Doubao", type: "video", provider: "seedance", capabilities: ["视频"] };
@@ -5576,6 +5701,7 @@ function inferVendor(id, owner = "") {
 function inferVendorFromModelId(modelId) {
   const id = String(modelId || "").toLowerCase();
   if (!id) return "";
+  if (/kling/.test(id)) return "Kling";
   if (/gemini|nano[-_. ]?banana/.test(id)) return "Gemini";
   if (/deepseek/.test(id)) return "DeepSeek";
   if (/(?:^|[-_.\/])(?:chat)?glm(?:[-_.\/]|$)|zhipu/.test(id)) return "GLM";
@@ -5613,6 +5739,7 @@ function isHiddenModel(modelId) {
 
 function inferProvider(id, owner = "") {
   const model = String(id || "").toLowerCase();
+  if (/kling/.test(model)) return "kling";
   if (isSora2Model(model)) return "sora";
   if (/seedance/.test(model)) return "seedance";
   if (/seedream|doubao|jimeng/.test(model)) return "seed";
@@ -5655,6 +5782,7 @@ function imageModeLabel(profile) {
 
 function videoModeLabel(profile) {
   if (profile?.provider === "sora") return "NewAPI Sora 参数";
+  if (profile?.provider === "kling") return "Kling 参数";
   if (profile?.provider === "veo" && usesDeepRouterVeoCompatibility(state.settings.videoModel)) return "Veo Multipart 参数";
   if (profile?.provider === "veo" && usesDeepRouterDocumentedVeo31Compatibility(state.settings.videoModel)) {
     return "Veo OpenAI 兼容参数";
@@ -5927,6 +6055,8 @@ if (typeof module !== "undefined" && module.exports) {
     isGrokImagineImageModel,
     isGrokImagine15Model,
     isGrokImagineVideoModel,
+    isKlingModel,
+    isKlingOmniModel,
     isSeedance2FastModel,
     isSeedance2Model,
     isSeedance25Model,
@@ -5940,6 +6070,7 @@ if (typeof module !== "undefined" && module.exports) {
     imageRequestSize,
     normalizeModelRecords,
     normalizeGptImageSize,
+    normalizeKlingDuration,
     normalizeSeedDanceDuration,
     normalizeSora2Duration,
     normalizeVeoDuration,
@@ -5952,6 +6083,7 @@ if (typeof module !== "undefined" && module.exports) {
     videoAspectOptionsForModel,
     videoDurationOptionsForModel,
     videoResolutionOptionsForModel,
+    videoPromptWithSelectedStyle,
     videoStatusEndpointForTask,
     videoStatusHeadersForTask,
     setTestSettings(settings) {
