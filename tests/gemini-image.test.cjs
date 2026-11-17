@@ -64,15 +64,17 @@ test("Gemini 2.5 image generation uses native generateContent", () => {
 
   assert.equal(resolveGeminiImageRoute("gemini-2.5-flash-image-preview"), "native");
   assert.equal(request.endpoint, "/v1beta/models/gemini-2.5-flash-image-preview:generateContent");
-  assert.deepEqual(body.generationConfig.imageConfig, { aspectRatio: "3:2", imageSize: "1K" });
+  assert.deepEqual(body.generationConfig.imageConfig, { aspectRatio: "3:2" });
 });
 
-test("Gemini 2.5 maps persisted pixel dimensions to a supported size", () => {
+test("Gemini 2.5 legacy model omits imageSize (no resolution tiers)", () => {
   const request = build("gemini-2.5-flash-image-preview", {
     imageAspectRatio: "16:9",
     imageSize: "2048x2048",
   });
-  assert.equal(JSON.parse(request.body).generationConfig.imageConfig.imageSize, "2K");
+  const imageConfig = JSON.parse(request.body).generationConfig.imageConfig;
+  assert.equal(imageConfig.aspectRatio, "16:9");
+  assert.equal(imageConfig.imageSize, undefined);
 });
 
 test("GPT Image 1.5 uses non-streaming JSON responses", () => {
@@ -81,7 +83,8 @@ test("GPT Image 1.5 uses non-streaming JSON responses", () => {
 
   assert.equal(request.endpoint, "/v1/images/generations");
   assert.equal(body.stream, undefined);
-  assert.equal(body.output_format, undefined);
+  assert.equal(body.output_format, "png");
+  assert.equal(body.background, "auto");
   assert.equal(body.response_format, undefined);
 });
 
@@ -90,7 +93,8 @@ test("GPT Image 2 uses synchronous JSON responses", () => {
   const body = JSON.parse(request.body);
 
   assert.equal(body.stream, undefined);
-  assert.equal(body.output_format, undefined);
+  assert.equal(body.output_format, "png");
+  assert.equal(body.background, "auto");
   assert.equal(body.response_format, undefined);
   assert.equal(body.size, "1024x768");
 });
@@ -100,14 +104,14 @@ test("DALL-E compatible generation retains response_format", () => {
   assert.equal(JSON.parse(request.body).response_format, "url");
 });
 
-test("GPT Image 2 quality options omit auto and normalize legacy settings", () => {
+test("GPT Image 2 quality options follow the official profile (auto allowed, unset in payload)", () => {
   setTestSettings({ imageModel: "gpt-image-2", imageQuality: "auto" });
-  assert.deepEqual(imageQualityOptionsForModel().map((option) => option.value), ["low", "medium", "high"]);
+  assert.deepEqual(imageQualityOptionsForModel().map((option) => option.value), ["auto", "low", "medium", "high"]);
   const request = build("gpt-image-2", { imageQuality: "auto" });
-  assert.equal(JSON.parse(request.body).quality, "medium");
+  assert.equal(JSON.parse(request.body).quality, undefined);
 
   const normalized = normalizeState({ settings: { imageModel: "gpt-image-2", imageQuality: "auto" } });
-  assert.equal(normalized.settings.imageQuality, "medium");
+  assert.equal(normalized.settings.imageQuality, "auto");
 });
 
 test("GPT Image dimensions are normalized to channel constraints", () => {
@@ -195,9 +199,9 @@ test("native and chat Gemini responses expose displayable images", () => {
   assert.deepEqual(extractImageUrls(chat), [`data:image/png;base64,${chatBase64}`]);
 });
 
-test("all Gemini image models expose size, quality, and style controls", () => {
+test("modern Gemini image models expose size, quality, and style controls", () => {
   setTestSettings({
-    imageModel: "gemini-2.5-flash-image-preview",
+    imageModel: "gemini-3-pro-image-preview",
     imageSize: "auto",
     imageQuality: "high",
     imageStyle: "cinematic",

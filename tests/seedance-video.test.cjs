@@ -133,8 +133,8 @@ test("all Seedance models support 21:9 and repair unsupported persisted paramete
   assert.equal(effectiveVideoAspectRatio(), "16:9");
 });
 
-test("Seedance 2.0 duration supports automatic mode and 5 through 15 seconds on dated aliases", () => {
-  assert.equal(normalizeSeedDanceDuration(2, "doubao-seedance-2-0-260128"), 5);
+test("Seedance 2.0 duration supports automatic mode and 4 through 15 seconds on dated aliases", () => {
+  assert.equal(normalizeSeedDanceDuration(2, "doubao-seedance-2-0-260128"), 4);
   assert.equal(normalizeSeedDanceDuration(30, "doubao-seedance-2-0-260128"), 15);
   assert.equal(normalizeSeedDanceDuration(9.6, "doubao-seedance-2-0-260128"), 10);
   assert.equal(normalizeSeedDanceDuration(-1, "doubao-seedance-2-0-260128"), -1);

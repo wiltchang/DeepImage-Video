@@ -11,12 +11,31 @@
   <body>
     <div id="app" class="app-shell">
       <aside id="sidebar" class="sidebar">
-        <div class="sidebar-header">
+        <div class="sidebar-brand">
+          <span class="brand-badge" aria-hidden="true">✦</span>
+          <span class="brand-name">DeepImage2-Video</span>
           <button id="collapseSidebar" class="icon-button desktop-only" type="button" title="收起侧边栏" aria-label="收起侧边栏">☰</button>
-          <button id="newSession" class="primary-action" type="button">新建视觉会话</button>
         </div>
 
-        <div class="mode-switch" role="tablist" aria-label="工作模式">
+        <div class="sidebar-main-menu">
+          <button id="newSession" class="primary-action" type="button">新建视觉会话</button>
+          <nav class="main-menu" aria-label="主菜单">
+            <button id="menuImageMode" class="menu-item active" type="button" aria-current="page">
+              <span class="menu-icon" aria-hidden="true">▦</span>
+              <span class="menu-label">图片生成</span>
+            </button>
+            <button id="menuVideoMode" class="menu-item" type="button">
+              <span class="menu-icon" aria-hidden="true">▶</span>
+              <span class="menu-label">视频生成</span>
+            </button>
+            <button id="menuChatMode" class="menu-item" type="button">
+              <span class="menu-icon" aria-hidden="true">✦</span>
+              <span class="menu-label">语言模型</span>
+            </button>
+          </nav>
+        </div>
+
+        <div class="mode-switch" role="tablist" aria-label="工作模式" hidden>
           <button id="imageMode" class="mode-button active" type="button" role="tab" aria-selected="true">视觉创作</button>
           <button id="chatMode" class="mode-button" type="button" role="tab" aria-selected="false">语言模型</button>
         </div>
@@ -28,14 +47,22 @@
         <nav id="sessionList" class="session-list" aria-label="会话列表"></nav>
 
         <div class="sidebar-footer">
-          <button id="openSettingsSide" class="plain-row" type="button">
-            <span class="avatar">AI</span>
-            <span class="plain-row-text">设置</span>
+          <button id="sidebarModelSettings" class="model-settings-card" type="button" title="模型设置">
+            <span class="model-settings-label">模型设置</span>
+            <span id="sidebarModelName" class="model-settings-name">未选择模型</span>
+            <span class="model-settings-arrow" aria-hidden="true">›</span>
           </button>
+          <div class="sidebar-footer-row">
+            <button id="openSettingsSide" class="plain-row" type="button">
+              <span class="avatar">AI</span>
+              <span class="plain-row-text">设置</span>
+            </button>
+            <div id="connectionStatus" class="connection-status">未配置 API 地址</div>
+          </div>
         </div>
       </aside>
 
-      <main class="workspace">
+      <main id="workspace" class="workspace">
         <header class="topbar">
           <div class="title-line">
             <button id="mobileMenu" class="icon-button mobile-only" type="button" title="打开侧边栏" aria-label="打开侧边栏">☰</button>
@@ -114,6 +141,14 @@
 
         <form id="composer" class="composer" autocomplete="off">
           <div class="composer-card">
+            <div id="referencePanel" class="reference-panel" hidden>
+              <div class="reference-panel-head">
+                <span class="reference-panel-title">参考素材</span>
+                <span id="referenceCount" class="soft-count">0 / 9</span>
+              </div>
+              <div id="draftMediaTray" class="draft-media-tray reference-grid"></div>
+              <p id="referenceSlotHint" class="reference-slot-hint" hidden>素材可分别用作商品、模特、场景与声音参考</p>
+            </div>
             <div id="chatToolbar" class="chat-toolbar" hidden>
               <button id="uploadChatFileButton" class="chip tool-chip" type="button" title="上传文件">＋ 文件</button>
               <button id="chatWebToggle" class="chip tool-chip" type="button" aria-pressed="false" title="联网搜索">◎ 联网</button>
@@ -133,8 +168,6 @@
               <button id="openOutputSettings" class="chip tool-chip" type="button" aria-expanded="false">参数</button>
             </div>
 
-            <div id="draftMediaTray" class="draft-media-tray" hidden></div>
-
             <div id="outputSettingsPopover" class="output-popover" hidden>
               <div id="imageOutputSettings" class="output-settings">
                 <div class="setting-row">
@@ -149,10 +182,26 @@
                   <span>质量</span>
                   <div id="imageQualityGroup" class="option-grid"></div>
                 </div>
+                <div class="setting-row" hidden>
+                  <span>背景</span>
+                  <div id="imageBackgroundGroup" class="option-grid compact-options"></div>
+                </div>
+                <div class="setting-row" hidden>
+                  <span>格式</span>
+                  <div id="imageFormatGroup" class="option-grid compact-options"></div>
+                </div>
                 <div class="setting-row">
                   <span>风格</span>
                   <div id="imageStyleGroup" class="option-grid"></div>
                 </div>
+                <label class="toggle-row" hidden>
+                  <span>AI 水印</span>
+                  <input id="imageWatermarkToggle" type="checkbox" />
+                </label>
+                <label class="toggle-row" hidden>
+                  <span>组图生成</span>
+                  <input id="imageSequentialToggle" type="checkbox" />
+                </label>
                 <label class="inline-field">
                   <span>数量</span>
                   <input id="imageCountInline" type="number" min="1" max="4" step="1" />

@@ -16,22 +16,58 @@ const MEDIA_CACHE_VERSION = 1;
 
 const MODEL_CATALOG = [
   {
+    id: "gpt-image-2.6-sunburst",
+    label: "GPT Image 2.6 Sunburst",
+    vendor: "OpenAI",
+    type: "image",
+    provider: "openai",
+    capabilities: ["文生图", "图生图", "高质量"],
+    description: "OpenAI 最新图片模型，按 size、quality、background、output_format 映射。",
+  },
+  {
+    id: "gpt-image-2.6-flare",
+    label: "GPT Image 2.6 Flare",
+    vendor: "OpenAI",
+    type: "image",
+    provider: "openai",
+    capabilities: ["文生图", "图生图", "高质量"],
+    description: "OpenAI 最新图片模型，按 size、quality、background、output_format 映射。",
+  },
+  {
+    id: "gpt-image-2.5-sunburst",
+    label: "GPT Image 2.5 Sunburst",
+    vendor: "OpenAI",
+    type: "image",
+    provider: "openai",
+    capabilities: ["文生图", "图生图", "高质量"],
+    description: "OpenAI 图片模型，quality 额外支持 xhigh、max。",
+  },
+  {
+    id: "gpt-image-2.5-flare",
+    label: "GPT Image 2.5 Flare",
+    vendor: "OpenAI",
+    type: "image",
+    provider: "openai",
+    capabilities: ["文生图", "图生图", "高质量"],
+    description: "OpenAI 图片模型，quality 额外支持 xhigh、max。",
+  },
+  {
     id: "gpt-image-2",
     label: "GPT Image 2",
     vendor: "OpenAI",
     type: "image",
     provider: "openai",
     capabilities: ["文生图", "图生图", "高质量"],
-    description: "OpenAI 图片模型，按 size、quality、style 映射。",
+    description: "OpenAI 图片模型，按 size、quality、background、output_format 映射。",
   },
   {
-    id: "gpt-image-1",
-    label: "GPT Image 1",
+    id: "gpt-image-1.5",
+    label: "GPT Image 1.5",
     vendor: "OpenAI",
     type: "image",
     provider: "openai",
     capabilities: ["文生图", "图生图"],
-    description: "OpenAI 图片生成/编辑兼容模型。",
+    description: "OpenAI 图片模型，size 使用官方标准三档与 auto。",
   },
   {
     id: "dall-e-3",
@@ -66,8 +102,17 @@ const MODEL_CATALOG = [
     vendor: "Doubao",
     type: "image",
     provider: "seed",
-    capabilities: ["文生图", "图生图"],
-    description: "Seedream/豆包图片模型，使用通用图片参数。",
+    capabilities: ["文生图", "图生图", "组图"],
+    description: "Seedream/豆包图片模型，使用 1K/2K/4K 档位、水印与组图参数。",
+  },
+  {
+    id: "nano-banana-2.1",
+    label: "Nano Banana 2.1",
+    vendor: "Gemini",
+    type: "image",
+    provider: "gemini",
+    capabilities: ["文生图", "图生图", "参考图"],
+    description: "Gemini 图片模型，使用官方比例集与 1K/2K/4K 分辨率档位。",
   },
   {
     id: "grok-2-image",
@@ -77,6 +122,42 @@ const MODEL_CATALOG = [
     provider: "xai",
     capabilities: ["文生图"],
     description: "xAI 图片模型预设。",
+  },
+  {
+    id: "doubao-seedance-2-0-260128",
+    label: "Seedance 2.0",
+    vendor: "Doubao",
+    type: "video",
+    provider: "seedance",
+    capabilities: ["文生视频", "图生视频", "首尾帧", "参考视频", "音频"],
+    description: "Seedance 2.0 全量版，支持 480p/720p/1080p/4K 与 4-15 秒时长。",
+  },
+  {
+    id: "doubao-seedance-2-0-fast-260128",
+    label: "Seedance 2.0 Fast",
+    vendor: "Doubao",
+    type: "video",
+    provider: "seedance",
+    capabilities: ["文生视频", "图生视频", "首尾帧"],
+    description: "Seedance 2.0 快速版，支持 480p/720p 与 4-15 秒时长。",
+  },
+  {
+    id: "doubao-seedance-2-0-mini-260615",
+    label: "Seedance 2.0 Mini",
+    vendor: "Doubao",
+    type: "video",
+    provider: "seedance",
+    capabilities: ["文生视频", "图生视频", "首尾帧"],
+    description: "Seedance 2.0 轻量版，支持 480p/720p 与 4-15 秒时长。",
+  },
+  {
+    id: "doubao-seedance-2-5-260628",
+    label: "Seedance 2.5",
+    vendor: "Doubao",
+    type: "video",
+    provider: "seedance",
+    capabilities: ["文生视频", "图生视频", "首尾帧", "参考视频", "音频"],
+    description: "Seedance 2.5，支持 480p/720p/1080p 与 4-30 秒时长。",
   },
   {
     id: "seedance-1.0-pro",
@@ -179,6 +260,37 @@ const IMAGE_STYLE_OPTIONS = [
   { value: "photorealistic", label: "写实" },
 ];
 
+const GPT_IMAGE_BACKGROUND_OPTIONS = [
+  { value: "auto", label: "自动" },
+  { value: "opaque", label: "不透明" },
+  { value: "transparent", label: "透明" },
+];
+
+const GPT_IMAGE_FORMAT_OPTIONS = [
+  { value: "png", label: "PNG" },
+  { value: "jpeg", label: "JPEG" },
+  { value: "webp", label: "WebP" },
+];
+
+const GPT_IMAGE_QUALITY_LABELS = {
+  auto: "自动",
+  low: "低",
+  medium: "中",
+  high: "高",
+  xhigh: "超高",
+  max: "最高",
+};
+
+const SEEDREAM_SIZE_OPTIONS = [
+  { value: "1K", label: "1K" },
+  { value: "2K", label: "2K" },
+  { value: "4K", label: "4K" },
+];
+
+const MUSE_VIDEO_ASPECT_OPTIONS = ["16:9", "9:16", "1:1"];
+const MUSE_VIDEO_RESOLUTION_OPTIONS = ["720p", "1080p"];
+const MUSE_VIDEO_DURATION_OPTIONS = [5, 10];
+
 const VIDEO_ASPECT_OPTIONS = [
   { value: "16:9", label: "16:9" },
   { value: "9:16", label: "9:16" },
@@ -230,6 +342,10 @@ const DEFAULT_SETTINGS = {
   imageSize: "1024x1024",
   imageQuality: "medium",
   imageStyle: "auto",
+  imageBackground: "auto",
+  imageOutputFormat: "png",
+  imageWatermark: false,
+  imageSequential: false,
   imageCount: 1,
   imageApiStyle: "auto",
   imageEndpoint: "/v1/images/generations",
@@ -281,7 +397,14 @@ function $(id) {
 
 function initElements() {
   [
+    "workspace",
     "sidebar",
+    "menuImageMode",
+    "menuVideoMode",
+    "menuChatMode",
+    "connectionStatus",
+    "sidebarModelSettings",
+    "sidebarModelName",
     "collapseSidebar",
     "newSession",
     "chatMode",
@@ -315,6 +438,9 @@ function initElements() {
     "taskCount",
     "imageHistory",
     "composer",
+    "referencePanel",
+    "referenceCount",
+    "referenceSlotHint",
     "chatToolbar",
     "chatWebToggle",
     "uploadChatFileButton",
@@ -329,6 +455,10 @@ function initElements() {
     "imageSizeGroup",
     "imageQualityGroup",
     "imageStyleGroup",
+    "imageBackgroundGroup",
+    "imageFormatGroup",
+    "imageWatermarkToggle",
+    "imageSequentialToggle",
     "imageCountInline",
     "videoAspectGroup",
     "videoResolutionGroup",
@@ -425,36 +555,86 @@ function loadState() {
   }
 }
 
+function linkedSettingsKeyOf(entry) {
+  if (!entry || typeof entry !== "object") return "";
+  return String(entry.key || entry.apiKey || entry.api_key || entry.token || "").trim();
+}
+
+function linkedSettingsUrlOf(entry) {
+  if (!entry || typeof entry !== "object") return "";
+  return decodeLinkedNewApiUrl(entry.url || entry.address || entry.baseUrl || entry.base_url || entry.server);
+}
+
+function resolveLinkedSettings(parsed) {
+  if (!parsed || typeof parsed !== "object") return null;
+  const containers = [parsed, parsed.settings, parsed.data].filter(
+    (item) => item && typeof item === "object" && !Array.isArray(item)
+  );
+  for (const container of containers) {
+    const candidates = [];
+    const collect = (entry) => {
+      const key = linkedSettingsKeyOf(entry);
+      if (key) candidates.push({ key, group: String(entry?.group || "").trim().toLowerCase() });
+    };
+    [container.keys, container.tokens].forEach((list) => {
+      if (Array.isArray(list)) list.forEach(collect);
+    });
+    collect(container);
+    const ownGroup = String(container.group || "").trim().toLowerCase();
+    const preferred = candidates.find((candidate) => candidate.group === "default")
+      || (ownGroup === "default" ? candidates[0] : null)
+      || candidates[0];
+    const key = preferred?.key || "";
+    const url = linkedSettingsUrlOf(container) || linkedSettingsUrlOf(parsed);
+    if (key || url) return { key, url };
+  }
+  return null;
+}
+
+function parseLinkedDirectParams(query) {
+  const params = new URLSearchParams(query);
+  // In a Sub2API embed the "token" param is the user's login JWT, not an API
+  // key; it is exchanged for a real key by applySub2ApiEmbedSettings instead.
+  const isSub2ApiEmbed = params.get("ui_mode") === "embedded" || params.has("user_id");
+  const key = String(
+    params.get("api_key") || params.get("apiKey") || (isSub2ApiEmbed ? "" : params.get("token")) || ""
+  ).trim();
+  const url = decodeLinkedNewApiUrl(
+    params.get("base_url") || params.get("baseUrl") || params.get("url") || params.get("address") || params.get("server") || ""
+  );
+  return key || url ? { key, url } : null;
+}
+
 function parseLinkedNewApiSettings(locationLike) {
   const sources = [locationLike?.hash, locationLike?.search].filter(Boolean);
   for (const source of sources) {
     const query = String(source).slice(String(source).indexOf("?") + 1).replace(/^#?\/?/, "");
     const marker = query.indexOf("settings=");
-    if (marker < 0) continue;
-    const parameterValue = new URLSearchParams(query).get("settings");
-    const rawValue = query.slice(marker + "settings=".length);
-    const candidates = unique([rawValue, parameterValue]);
-    for (const candidate of candidates) {
-      const decoded = [candidate];
-      try {
-        decoded.push(decodeURIComponent(candidate));
-      } catch {
-        // The URLSearchParams value may already be decoded.
-      }
-      for (const value of unique(decoded)) {
+    if (marker >= 0) {
+      const parameterValue = new URLSearchParams(query).get("settings");
+      const rawValue = query.slice(marker + "settings=".length);
+      const candidates = unique([rawValue, parameterValue]);
+      for (const candidate of candidates) {
+        const decoded = [candidate];
         try {
-          let parsed = JSON.parse(value);
-          if (typeof parsed === "string") parsed = JSON.parse(parsed);
-          if (!parsed || typeof parsed !== "object") continue;
-          return {
-            key: String(parsed.key || parsed.apiKey || "").trim(),
-            url: decodeLinkedNewApiUrl(parsed.url || parsed.address || parsed.baseUrl),
-          };
+          decoded.push(decodeURIComponent(candidate));
         } catch {
-          // Try the next decoding form.
+          // The URLSearchParams value may already be decoded.
+        }
+        for (const value of unique(decoded)) {
+          try {
+            let parsed = JSON.parse(value);
+            if (typeof parsed === "string") parsed = JSON.parse(parsed);
+            const resolved = resolveLinkedSettings(parsed);
+            if (resolved) return resolved;
+          } catch {
+            // Try the next decoding form.
+          }
         }
       }
     }
+    const direct = parseLinkedDirectParams(query);
+    if (direct) return direct;
   }
   return null;
 }
@@ -485,9 +665,127 @@ function applyLinkedNewApiSettings() {
   if (key || url) saveState();
   const cleanQuery = new URLSearchParams(window.location.search);
   cleanQuery.delete("settings");
+  ["api_key", "apiKey", "token", "base_url", "baseUrl", "address", "server"].forEach((name) => cleanQuery.delete(name));
   const cleanSearch = cleanQuery.toString();
   window.history.replaceState(null, document.title, `${window.location.pathname}${cleanSearch ? `?${cleanSearch}` : ""}`);
   return Boolean(key || url);
+}
+
+const SUB2API_EMBED_PARAM_NAMES = ["token", "user_id", "ui_mode", "theme", "lang", "src_host", "src_url"];
+
+function linkedQueryFromSource(source) {
+  const text = String(source || "");
+  return text.slice(text.indexOf("?") + 1).replace(/^#?\/?/, "");
+}
+
+function parseSub2ApiEmbedParams(locationLike) {
+  const sources = [locationLike?.hash, locationLike?.search].filter(Boolean);
+  for (const source of sources) {
+    const params = new URLSearchParams(linkedQueryFromSource(source));
+    const jwt = String(params.get("token") || "").trim();
+    if (!jwt) continue;
+    if (params.get("ui_mode") === "embedded" || params.has("user_id")) {
+      let srcHost = "";
+      try {
+        const parsed = new URL(String(params.get("src_host") || "").trim());
+        if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+          srcHost = parsed.origin;
+        }
+      } catch {
+        srcHost = "";
+      }
+      return { jwt, srcHost };
+    }
+  }
+  return null;
+}
+
+function sub2ApiKeyItems(payload) {
+  if (!payload || typeof payload !== "object") return [];
+  if (Array.isArray(payload.items)) return payload.items;
+  if (Array.isArray(payload.data)) return payload.data;
+  if (payload.data && typeof payload.data === "object" && Array.isArray(payload.data.items)) {
+    return payload.data.items;
+  }
+  return [];
+}
+
+function selectSub2ApiKey(payload) {
+  const active = sub2ApiKeyItems(payload).filter(
+    (item) => item && item.status === "active" && String(item.key || "").trim()
+  );
+  if (!active.length) return null;
+  const preferred =
+    active.find((item) => String(item.group?.name || "").trim().toLowerCase() === "default") ||
+    active.find((item) => item.group_id === null || item.group_id === undefined) ||
+    active[0];
+  return String(preferred.key).trim();
+}
+
+function stripSub2ApiEmbedParams(query) {
+  const params = new URLSearchParams(query);
+  SUB2API_EMBED_PARAM_NAMES.forEach((name) => params.delete(name));
+  return params.toString();
+}
+
+function cleanSub2ApiEmbedParamsFromUrl() {
+  const cleanSearch = stripSub2ApiEmbedParams(String(window.location.search || "").replace(/^\?/, ""));
+  let cleanHash = String(window.location.hash || "");
+  const hashQueryIndex = cleanHash.indexOf("?");
+  if (hashQueryIndex >= 0) {
+    const hashHead = cleanHash.slice(0, hashQueryIndex);
+    const hashTail = stripSub2ApiEmbedParams(cleanHash.slice(hashQueryIndex + 1));
+    cleanHash = hashTail ? `${hashHead}?${hashTail}` : hashHead;
+  }
+  window.history.replaceState(
+    null,
+    document.title,
+    `${window.location.pathname}${cleanSearch ? `?${cleanSearch}` : ""}${cleanHash}`
+  );
+}
+
+function sub2ApiSiteOrigin(srcHost) {
+  try {
+    if (document.referrer) {
+      const referrer = new URL(document.referrer);
+      if (referrer.protocol === "http:" || referrer.protocol === "https:") {
+        return referrer.origin;
+      }
+    }
+  } catch {
+    // fall through to the src_host passthrough param
+  }
+  // Sub2API also appends src_host (the console origin) to embedded URLs;
+  // it survives referrer stripping, so use it as the fallback source.
+  return String(srcHost || "");
+}
+
+async function applySub2ApiEmbedSettings() {
+  const embed = parseSub2ApiEmbedParams(window.location);
+  if (!embed) return false;
+  // Strip the passthrough params (including the JWT) from the address bar
+  // first, whether the import below succeeds or not. The JWT is only used
+  // for this one request: never stored, never logged.
+  cleanSub2ApiEmbedParamsFromUrl();
+  const origin = sub2ApiSiteOrigin(embed.srcHost);
+  if (!origin) return false;
+  let payload;
+  try {
+    const response = await fetch(`${origin}/api/v1/keys?page=1&page_size=100`, {
+      headers: { Authorization: `Bearer ${embed.jwt}` },
+    });
+    if (!response || !response.ok) return false;
+    payload = await response.json();
+  } catch {
+    // Network failures and CORS blocks silently fall back to manual setup.
+    return false;
+  }
+  const key = selectSub2ApiKey(payload);
+  if (!key) return false;
+  state.settings.apiKey = key;
+  state.settings.baseUrl = normalizeApiBaseUrl(origin);
+  saveState();
+  return true;
 }
 
 function createInitialState() {
@@ -982,6 +1280,16 @@ function bindEvents() {
   els.imageMode.addEventListener("click", () => setMode("image"));
   els.visualImageTab.addEventListener("click", () => setVisualMode("image"));
   els.visualVideoTab.addEventListener("click", () => setVisualMode("video"));
+  els.menuImageMode.addEventListener("click", () => {
+    setMode("image");
+    if (state.settings.visualMode !== "image") setVisualMode("image");
+  });
+  els.menuVideoMode.addEventListener("click", () => {
+    setMode("image");
+    if (state.settings.visualMode !== "video") setVisualMode("video");
+  });
+  els.menuChatMode.addEventListener("click", () => setMode("chat"));
+  els.sidebarModelSettings.addEventListener("click", () => openSettings("models"));
   els.sessionSearch.addEventListener("input", renderSessions);
   els.openSettings.addEventListener("click", () => openSettings("api"));
   els.openSettingsSide.addEventListener("click", () => openSettings("api"));
@@ -1093,6 +1401,16 @@ function bindEvents() {
     saveState();
     renderOutputOptions();
   });
+  els.imageWatermarkToggle.addEventListener("change", () => {
+    state.settings.imageWatermark = els.imageWatermarkToggle.checked;
+    saveState();
+    renderOutputOptions();
+  });
+  els.imageSequentialToggle.addEventListener("change", () => {
+    state.settings.imageSequential = els.imageSequentialToggle.checked;
+    saveState();
+    renderOutputOptions();
+  });
   els.uploadImageRefButton.addEventListener("click", () => els.imageReferenceFiles.click());
   els.uploadFirstFrameButton.addEventListener("click", () => els.firstFrameFile.click());
   els.uploadLastFrameButton.addEventListener("click", () => els.lastFrameFile.click());
@@ -1132,6 +1450,16 @@ function bindEvents() {
     const removeButton = event.target.closest("[data-remove-media]");
     if (removeButton) {
       removeDraftMedia(removeButton.dataset.removeMedia, removeButton.dataset.mediaId);
+      return;
+    }
+
+    const addMediaButton = event.target.closest("[data-add-media]");
+    if (addMediaButton) {
+      if (addMediaButton.dataset.addMedia === "video" && !draftMedia.firstFrame) {
+        els.firstFrameFile.click();
+      } else {
+        els.imageReferenceFiles.click();
+      }
       return;
     }
 
@@ -1236,12 +1564,17 @@ function renderHeader() {
     : state.settings.chatModel;
   els.workspaceTitle.textContent = "DeepImage2-Video";
   els.modelBadge.textContent = model || "未选择模型";
+  if (els.sidebarModelName) {
+    els.sidebarModelName.textContent = model || "未选择模型";
+    els.sidebarModelName.title = model || "";
+  }
   document.title = "DeepImage2-Video";
 }
 
 function renderModes() {
   const isVisual = activeMode === "image";
   const visualMode = state.settings.visualMode;
+  if (els.workspace) els.workspace.classList.toggle("visual-workspace", isVisual);
   els.chatMode.classList.toggle("active", !isVisual);
   els.chatMode.setAttribute("aria-selected", String(!isVisual));
   els.imageMode.classList.toggle("active", isVisual);
@@ -1259,6 +1592,36 @@ function renderModes() {
       : "描述要生成的画面；上传参考图可进行图生图"
     : "输入消息";
   els.sessionSearch.placeholder = isVisual ? "搜索视觉创作" : "搜索会话";
+  if (els.menuImageMode) {
+    const menuStates = [
+      [els.menuImageMode, isVisual && visualMode === "image"],
+      [els.menuVideoMode, isVisual && visualMode === "video"],
+      [els.menuChatMode, !isVisual],
+    ];
+    menuStates.forEach(([item, active]) => {
+      item.classList.toggle("active", active);
+      if (active) item.setAttribute("aria-current", "page");
+      else item.removeAttribute("aria-current");
+    });
+  }
+  renderConnectionStatus();
+}
+
+function renderConnectionStatus() {
+  if (!els.connectionStatus) return;
+  const raw = String(state.settings.baseUrl || "").trim();
+  let host = "";
+  try {
+    host = new URL(raw).host;
+  } catch {
+    host = "";
+  }
+  const hasKey = Boolean(String(state.settings.apiKey || "").trim());
+  els.connectionStatus.textContent = host
+    ? `${host} · ${hasKey ? "已配置" : "未配置密钥"}`
+    : "未配置 API 地址";
+  els.connectionStatus.title = raw;
+  els.connectionStatus.classList.toggle("is-ready", Boolean(host && hasKey));
 }
 
 function renderControls() {
@@ -1345,9 +1708,10 @@ function renderOutputOptions() {
   els.openOutputSettings.setAttribute("aria-expanded", String(outputPopoverOpen));
   els.imageOutputSettings.hidden = isVideo;
   els.videoOutputSettings.hidden = !isVideo;
-  els.imageCountInline.value = state.settings.imageCount;
-  els.imageCountInline.disabled = false;
-  els.imageCountInline.title = "";
+  const isDallE3 = state.settings.imageModel === "dall-e-3";
+  els.imageCountInline.value = isDallE3 ? 1 : state.settings.imageCount;
+  els.imageCountInline.disabled = isDallE3;
+  els.imageCountInline.title = isDallE3 ? "DALL-E 3 每次仅生成 1 张" : "";
   els.videoAudioToggle.checked = effectiveVideoAudio();
   els.videoAudioToggle.disabled = isVeoModel(state.settings.videoModel);
   els.videoAudioToggle.title = isVeo2Model(state.settings.videoModel)
@@ -1356,8 +1720,22 @@ function renderOutputOptions() {
 
   const imageSizeRow = els.imageSizeGroup.closest(".setting-row");
   const imageStyleRow = els.imageStyleGroup.closest(".setting-row");
+  const imageQualityRow = els.imageQualityGroup.closest(".setting-row");
+  const seedreamSelected = isSeedreamModel(state.settings.imageModel);
+  const gptImageSelected = isGptImageModel(state.settings.imageModel);
   if (imageSizeRow) imageSizeRow.hidden = grokImageSelected;
-  if (imageStyleRow) imageStyleRow.hidden = grokImageSelected;
+  if (imageStyleRow) imageStyleRow.hidden = grokImageSelected || gptImageSelected || seedreamSelected;
+  if (imageQualityRow) imageQualityRow.hidden = seedreamSelected;
+  const imageBackgroundRow = els.imageBackgroundGroup?.closest(".setting-row");
+  const imageFormatRow = els.imageFormatGroup?.closest(".setting-row");
+  if (imageBackgroundRow) imageBackgroundRow.hidden = !gptImageSelected;
+  if (imageFormatRow) imageFormatRow.hidden = !gptImageSelected;
+  const imageWatermarkRow = els.imageWatermarkToggle?.closest(".toggle-row");
+  const imageSequentialRow = els.imageSequentialToggle?.closest(".toggle-row");
+  if (imageWatermarkRow) imageWatermarkRow.hidden = !seedreamSelected;
+  if (imageSequentialRow) imageSequentialRow.hidden = !seedreamSelected;
+  if (els.imageWatermarkToggle) els.imageWatermarkToggle.checked = !!state.settings.imageWatermark;
+  if (els.imageSequentialToggle) els.imageSequentialToggle.checked = !!state.settings.imageSequential;
   renderOptionGroup(els.imageAspectGroup, "imageAspectRatio", imageAspectOptionsForModel(), effectiveImageAspectRatio());
   renderOptionGroup(els.imageSizeGroup, "imageSize", imageSizeOptionsForModel(), effectiveImageOutputSize());
   renderOptionGroup(
@@ -1367,6 +1745,12 @@ function renderOutputOptions() {
     grokImageSelected ? grokImageResolution() : state.settings.imageQuality
   );
   renderOptionGroup(els.imageStyleGroup, "imageStyle", imageStyleOptionsForModel(), state.settings.imageStyle);
+  if (els.imageBackgroundGroup) {
+    renderOptionGroup(els.imageBackgroundGroup, "imageBackground", GPT_IMAGE_BACKGROUND_OPTIONS, gptImageBackgroundValue());
+  }
+  if (els.imageFormatGroup) {
+    renderOptionGroup(els.imageFormatGroup, "imageOutputFormat", GPT_IMAGE_FORMAT_OPTIONS, gptImageOutputFormatValue());
+  }
   renderOptionGroup(els.videoAspectGroup, "videoAspectRatio", videoAspectOptionsForModel(), effectiveVideoAspectRatio());
   const videoAspectRow = els.videoAspectGroup.closest(".setting-row");
   const videoResolutionRow = els.videoResolutionGroup.closest(".setting-row");
@@ -1432,6 +1816,9 @@ function imageSizeOptionsForModel() {
   if (model?.id === "dall-e-3") {
     return IMAGE_SIZE_OPTIONS.filter((option) => ["1024x1024", "1024x1792", "1792x1024"].includes(option.value));
   }
+  if (isSeedreamModel(model?.id)) {
+    return SEEDREAM_SIZE_OPTIONS;
+  }
   if (isGptImage2Model(model?.id)) {
     return [
       { value: "auto", label: "自动" },
@@ -1455,6 +1842,7 @@ function imageSizeOptionsForModel() {
   if (model?.provider === "gemini") {
     const id = String(model.id || "").toLowerCase();
     const automatic = [{ value: "auto", label: "自动" }];
+    if (isLegacyGeminiImageModel(id)) return automatic;
     if (/gemini-3\.1-flash-lite-image/.test(id)) return [...automatic, { value: "1K", label: "1K" }];
     if (/gemini-2\.0/.test(id)) return [...automatic, { value: "1K", label: "1K" }];
     const sizes = [
@@ -1475,7 +1863,7 @@ function imageAspectOptionsForModel(modelId = state.settings.imageModel) {
   }
   if (supportsGeminiNativeImageConfig(modelId)) {
     const id = String(modelId || "").toLowerCase();
-    const ratios = /gemini-3\.1-flash-image/.test(id)
+    const ratios = /gemini-3\.1-flash-image|nano[-_.]?banana[-_.]?2/.test(id)
       ? ["1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9"]
       : ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"];
     return ratios.map((value) => ({ value, label: value }));
@@ -1503,10 +1891,13 @@ function imageQualityOptionsForModel() {
   if (model?.id === "dall-e-3") {
     return IMAGE_QUALITY_OPTIONS.filter((option) => ["standard", "hd"].includes(option.value));
   }
+  if (isGptImageModel(model?.id)) {
+    const values = ["auto", "low", "medium", "high"];
+    if (isGptImage25PlusModel(model?.id)) values.push("xhigh", "max");
+    return values.map((value) => ({ value, label: GPT_IMAGE_QUALITY_LABELS[value] }));
+  }
   if (model?.provider === "openai") {
-    const values = isGptImage2Model(model?.id)
-      ? ["low", "medium", "high"]
-      : ["auto", "low", "medium", "high"];
+    const values = ["auto", "low", "medium", "high"];
     return IMAGE_QUALITY_OPTIONS.filter((option) => values.includes(option.value));
   }
   if (model?.provider === "gemini") {
@@ -1519,6 +1910,9 @@ function videoResolutionOptionsForModel() {
   const modelId = state.settings.videoModel;
   if (isKlingModel(modelId)) {
     return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["720p", "1080p"].includes(option.value));
+  }
+  if (isMuseVideoModel(modelId)) {
+    return VIDEO_RESOLUTION_OPTIONS.filter((option) => MUSE_VIDEO_RESOLUTION_OPTIONS.includes(option.value));
   }
   if (isSeedance25Model(modelId)) {
     return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["480p", "720p", "1080p"].includes(option.value));
@@ -1550,6 +1944,9 @@ function videoAspectOptionsForModel() {
   if (isKlingModel(modelId)) {
     return VIDEO_ASPECT_OPTIONS.filter((option) => ["16:9", "9:16"].includes(option.value));
   }
+  if (isMuseVideoModel(modelId)) {
+    return MUSE_VIDEO_ASPECT_OPTIONS.map((value) => ({ value, label: value }));
+  }
   if (isSora2Model(modelId)) {
     return [{ value: "1280x720", label: "1280x720" }];
   }
@@ -1580,6 +1977,9 @@ function videoAspectOptionsForModel() {
 
 function videoDurationOptionsForModel() {
   const modelId = state.settings.videoModel;
+  if (isMuseVideoModel(modelId)) {
+    return MUSE_VIDEO_DURATION_OPTIONS.map((seconds) => ({ value: String(seconds), label: `${seconds}s` }));
+  }
   if (isKlingModel(modelId)) {
     return Array.from({ length: 13 }, (_, index) => {
       const seconds = String(index + 3);
@@ -1610,10 +2010,8 @@ function videoDurationOptionsForModel() {
     return [{ value: "-1", label: "自动" }, ...options];
   }
   if (!isSeedance2Model(modelId)) return VIDEO_DURATION_OPTIONS;
-  const unified = isSeedance20UnifiedModel(modelId);
-  const minimum = unified ? 4 : 5;
-  const options = Array.from({ length: 16 - minimum }, (_, index) => {
-    const seconds = String(index + minimum);
+  const options = Array.from({ length: 12 }, (_, index) => {
+    const seconds = String(index + 4);
     return { value: seconds, label: `${seconds}s` };
   });
   return [{ value: "-1", label: "自动" }, ...options];
@@ -1751,6 +2149,7 @@ function usesPixelVideoSizeOptions(modelId = state.settings.videoModel) {
 
 function effectiveVideoAspectRatio(modelId = state.settings.videoModel) {
   const ratio = state.settings.videoAspectRatio;
+  if (isMuseVideoModel(modelId)) return MUSE_VIDEO_ASPECT_OPTIONS.includes(ratio) ? ratio : "16:9";
   if (isKlingModel(modelId)) return ["16:9", "9:16"].includes(ratio) ? ratio : "16:9";
   if (isSora2Model(modelId)) {
     return "1280x720";
@@ -1779,6 +2178,7 @@ function effectiveVideoAspectRatio(modelId = state.settings.videoModel) {
 
 function effectiveVideoResolution(modelId = state.settings.videoModel) {
   const resolution = state.settings.videoResolution;
+  if (isMuseVideoModel(modelId)) return MUSE_VIDEO_RESOLUTION_OPTIONS.includes(resolution) ? resolution : "720p";
   if (isKlingModel(modelId)) return ["720p", "1080p"].includes(resolution) ? resolution : "720p";
   if (isSeedance25Model(modelId)) return ["480p", "720p", "1080p"].includes(resolution) ? resolution : "720p";
   if (isSeedance2FastModel(modelId)) return ["480p", "720p"].includes(resolution) ? resolution : "720p";
@@ -1795,17 +2195,26 @@ function effectiveVideoResolution(modelId = state.settings.videoModel) {
 
 function normalizeSeedDanceDuration(value, modelId = state.settings.videoModel) {
   const duration = Number(value);
-  const unified = isSeedance20UnifiedModel(modelId);
   const seedance25 = isSeedance25Model(modelId);
   if ((isSeedance2Model(modelId) || seedance25) && duration === -1) return -1;
   const fallback = seedance25 ? 4 : isSeedance2Model(modelId) ? 5 : 4;
-  const minimum = unified || seedance25 ? 4 : isSeedance2Model(modelId) ? 5 : 1;
+  const minimum = seedance25 || isSeedance2Model(modelId) ? 4 : 1;
   const maximum = seedance25 ? 30 : isSeedance2Model(modelId) ? 15 : 30;
   return Math.min(maximum, Math.max(minimum, Number.isFinite(duration) ? Math.round(duration) : fallback));
 }
 
+function normalizeMuseDuration(value) {
+  const duration = Number(value);
+  if (!Number.isFinite(duration)) return MUSE_VIDEO_DURATION_OPTIONS[0];
+  return MUSE_VIDEO_DURATION_OPTIONS.reduce(
+    (closest, option) => (Math.abs(option - duration) < Math.abs(closest - duration) ? option : closest),
+    MUSE_VIDEO_DURATION_OPTIONS[0]
+  );
+}
+
 function effectiveVideoDuration(modelId = state.settings.videoModel) {
   const profile = getModelProfile(modelId);
+  if (isMuseVideoModel(modelId)) return normalizeMuseDuration(state.settings.videoDuration);
   if (isKlingModel(modelId)) return normalizeKlingDuration(state.settings.videoDuration);
   if (profile?.provider === "seedance") {
     if (isSeedance25Model(modelId) && draftMedia.videoReferences.length) return -1;
@@ -1892,6 +2301,7 @@ function imageStyleOptionsForModel() {
   if (model?.id === "dall-e-3") {
     return IMAGE_STYLE_OPTIONS.filter((option) => ["vivid", "natural"].includes(option.value));
   }
+  if (isGptImageModel(model?.id)) return [];
   return IMAGE_STYLE_OPTIONS;
 }
 
@@ -2709,6 +3119,9 @@ function buildImageRequest(prompt, references, isEdit) {
   if (isGrokImagineImageModel(settings.imageModel)) {
     return buildGrokImageRequest(prompt, references, isEdit, model);
   }
+  if (isSeedreamModel(settings.imageModel)) {
+    return buildSeedreamImageRequest(prompt, references, model);
+  }
   const style = resolveImageApiStyle(model);
   if (style === "gemini") {
     return buildGeminiImageRequest(prompt, references, model);
@@ -2717,6 +3130,46 @@ function buildImageRequest(prompt, references, isEdit) {
     return buildOpenAIImageEditRequest(prompt, references);
   }
   return buildOpenAIImageGenerationRequest(prompt, model);
+}
+
+function seedreamSizeFromTier(tier, aspect) {
+  const target = { "1K": 1024, "2K": 2048, "4K": 4096 }[tier] || 2048;
+  const [aspectWidth, aspectHeight] = String(aspect || "1:1").split(":").map(Number);
+  const ratio = aspectWidth > 0 && aspectHeight > 0 ? aspectWidth / aspectHeight : 1;
+  const area = target * target;
+  const align = (value) => Math.max(64, Math.round(value / 16) * 16);
+  const width = align(Math.sqrt(area * ratio));
+  const height = align(area / width);
+  return `${width}x${height}`;
+}
+
+function buildSeedreamImageRequest(prompt, references, model) {
+  const settings = state.settings;
+  const tier = SEEDREAM_SIZE_OPTIONS.some((option) => option.value === settings.imageSize)
+    ? settings.imageSize
+    : "2K";
+  const count = clampNumber(settings.imageCount, 1, 4, 1);
+  const payload = {
+    model: settings.imageModel,
+    prompt: imagePromptWithSelectedStyle(prompt, settings.imageModel),
+    size: seedreamSizeFromTier(tier, effectiveImageAspectRatio(settings.imageModel)),
+    n: count,
+    response_format: "url",
+    watermark: !!settings.imageWatermark,
+    sequential_image_generation: settings.imageSequential ? "auto" : "disabled",
+  };
+  if (settings.imageSequential) {
+    payload.sequential_image_generation_options = { max_images: count };
+  }
+  if (references.length) {
+    payload.image = references.map((reference) => reference.dataUrl);
+  }
+  return {
+    label: `${model?.vendor || "Doubao"} Seedream 图片${references.length ? "编辑" : "生成"}`,
+    endpoint: settings.imageEndpoint || DEFAULT_SETTINGS.imageEndpoint,
+    headers: authHeaders(),
+    body: JSON.stringify(payload),
+  };
 }
 
 function buildGrokImageRequest(prompt, references, isEdit, model) {
@@ -2759,7 +3212,7 @@ function buildOpenAIImageGenerationRequest(prompt, model) {
     model: settings.imageModel,
     prompt: imagePromptWithSelectedStyle(prompt, settings.imageModel),
     size: imageRequestSize(settings.imageModel),
-    n: clampNumber(settings.imageCount, 1, 4, 1),
+    n: model?.id === "dall-e-3" ? 1 : clampNumber(settings.imageCount, 1, 4, 1),
   };
   if (!isGptImage) payload.response_format = "url";
   applyImageTuning(payload, model, "openai");
@@ -2928,9 +3381,14 @@ function buildOpenAIImageEditRequest(prompt, references) {
   form.append("model", settings.imageModel);
   form.append("prompt", imagePromptWithSelectedStyle(prompt, settings.imageModel));
   form.append("size", imageRequestSize(settings.imageModel));
-  form.append("n", String(clampNumber(settings.imageCount, 1, 4, 1)));
+  form.append("n", String(model?.id === "dall-e-3" ? 1 : clampNumber(settings.imageCount, 1, 4, 1)));
   const quality = normalizeImageQualityForModel(settings.imageModel, settings.imageQuality);
   if (quality !== "auto") form.append("quality", normalizeQualityForModel(quality, model));
+  if (isGptImageModel(settings.imageModel)) {
+    const background = gptImageBackgroundValue();
+    form.append("background", background);
+    form.append("output_format", gptImageOutputFormatValue(background));
+  }
   if (settings.imageStyle !== "auto" && !isGptImageModel(settings.imageModel)) form.append("style", settings.imageStyle);
   const imageField = isBananaRouterBaseUrl() ? "image[]" : "image";
   references.forEach((reference) => {
@@ -2991,8 +3449,9 @@ function buildGeminiNativeImageRequest(prompt, references, model) {
   if (supportsGeminiNativeImageConfig(modelId)) {
     generationConfig.imageConfig = {
       aspectRatio: effectiveImageAspectRatio(modelId),
-      imageSize: geminiNativeImageSize(),
     };
+    const imageSize = geminiNativeImageSize();
+    if (imageSize) generationConfig.imageConfig.imageSize = imageSize;
   }
   const payload = {
     contents: [{ role: "user", parts }],
@@ -3023,7 +3482,7 @@ function isGemini3ProImageModel(modelId) {
 
 function supportsGeminiNativeImageConfig(modelId) {
   const id = String(modelId || "").toLowerCase();
-  return /gemini-(?:2\.5|3(?:\.1)?)-.*image/.test(id);
+  return /gemini-(?:2\.5|3(?:\.1)?)-.*image/.test(id) || /nano[-_.]?banana[-_.]?2(?:$|[-_.])/.test(id);
 }
 
 function geminiInlineImage(reference) {
@@ -3038,6 +3497,7 @@ function geminiInlineImage(reference) {
 
 function geminiNativeImageSize() {
   const modelId = String(state.settings.imageModel || "").toLowerCase();
+  if (isLegacyGeminiImageModel(modelId)) return "";
   if (/gemini-2\.0|gemini-3\.1-flash-lite-image/.test(modelId)) return "1K";
   const selected = String(state.settings.imageSize || "").toUpperCase();
   const supported = /gemini-3\.1-flash-image/.test(modelId) ? ["0.5K", "1K", "2K", "4K"] : ["1K", "2K", "4K"];
@@ -3050,6 +3510,17 @@ function geminiNativeImageSize() {
   return Math.max(...dimensions) > 1024 ? "2K" : "1K";
 }
 
+function gptImageBackgroundValue() {
+  const value = String(state.settings.imageBackground || "auto").toLowerCase();
+  return GPT_IMAGE_BACKGROUND_OPTIONS.some((option) => option.value === value) ? value : "auto";
+}
+
+function gptImageOutputFormatValue(background = gptImageBackgroundValue()) {
+  const value = String(state.settings.imageOutputFormat || "png").toLowerCase();
+  const format = GPT_IMAGE_FORMAT_OPTIONS.some((option) => option.value === value) ? value : "png";
+  return background === "transparent" && format === "jpeg" ? "png" : format;
+}
+
 function applyImageTuning(payload, model, style) {
   const settings = state.settings;
   const quality = normalizeImageQualityForModel(settings.imageModel, settings.imageQuality);
@@ -3059,6 +3530,10 @@ function applyImageTuning(payload, model, style) {
   if (settings.imageStyle !== "auto") {
     if (style === "gemini") payload.style_preset = settings.imageStyle;
     else if (!isGptImageModel(settings.imageModel)) payload.style = settings.imageStyle;
+  }
+  if (isGptImageModel(settings.imageModel)) {
+    payload.background = gptImageBackgroundValue();
+    payload.output_format = gptImageOutputFormatValue(payload.background);
   }
   if (style !== "openai" || model?.provider !== "openai") {
     payload.aspect_ratio = effectiveImageAspectRatio(settings.imageModel);
@@ -3084,7 +3559,7 @@ function imagePromptWithSelectedStyle(prompt, modelId = state.settings.imageMode
   };
   const controls = [];
   const stylePrompt = stylePrompts[state.settings.imageStyle];
-  if (stylePrompt && (isGptImageModel(modelId) || isGemini)) controls.push(`风格：${stylePrompt}`);
+  if (stylePrompt && isGemini) controls.push(`风格：${stylePrompt}`);
   if (isGemini) {
     const qualityPrompt = qualityPrompts[normalizeImageQualityForModel(modelId, state.settings.imageQuality)];
     if (qualityPrompt) controls.push(`质量：${qualityPrompt}`);
@@ -3238,6 +3713,7 @@ function buildVideoRequest(prompt, profile) {
     return buildNewApiVeoVideoRequest(prompt, profile);
   }
   if (profile?.provider === "veo" && apiStyle === "gemini") return buildVeoVideoRequest(prompt, profile);
+  if (profile?.provider === "muse") return buildMuseVideoRequest(prompt, profile);
   const references = buildVideoReferences();
   return {
     label: `${profile?.vendor || "通用"} 视频参数`,
@@ -3250,6 +3726,33 @@ function buildVideoRequest(prompt, profile) {
       resolution: settings.videoResolution,
       duration: clampNumber(settings.videoDuration, 1, 30, 5),
       duration_seconds: clampNumber(settings.videoDuration, 1, 30, 5),
+      style: settings.videoStyle === "auto" ? undefined : settings.videoStyle,
+      audio: !!settings.videoAudio,
+      generate_audio: !!settings.videoAudio,
+      first_frame: draftMedia.firstFrame ? mediaPayload(draftMedia.firstFrame) : undefined,
+      last_frame: draftMedia.lastFrame ? mediaPayload(draftMedia.lastFrame) : undefined,
+      references,
+      response_format: "url",
+    }),
+  };
+}
+
+function buildMuseVideoRequest(prompt, profile) {
+  const settings = state.settings;
+  const modelId = settings.videoModel;
+  const duration = normalizeMuseDuration(settings.videoDuration);
+  const references = buildVideoReferences();
+  return {
+    label: `${profile?.vendor || "Muse"} 视频参数`,
+    endpoint: videoGenerationEndpoint(profile),
+    headers: authHeaders(),
+    body: JSON.stringify({
+      model: modelId,
+      prompt,
+      aspect_ratio: effectiveVideoAspectRatio(modelId),
+      resolution: effectiveVideoResolution(modelId),
+      duration,
+      duration_seconds: duration,
       style: settings.videoStyle === "auto" ? undefined : settings.videoStyle,
       audio: !!settings.videoAudio,
       generate_audio: !!settings.videoAudio,
@@ -4448,7 +4951,7 @@ async function continueFromVisualResult(taskId, src, type) {
       draftMedia.videoReferences = [media];
     } else {
       state.settings.visualMode = "image";
-      draftMedia.imageReferences = uniqueMedia([...draftMedia.imageReferences, media]).slice(0, 8);
+      draftMedia.imageReferences = uniqueMedia([...draftMedia.imageReferences, media]).slice(0, 9);
       syncImageModeFromReferences();
     }
     saveState();
@@ -4456,7 +4959,7 @@ async function continueFromVisualResult(taskId, src, type) {
     els.promptInput.value = task.prompt || "";
     autoResizePrompt();
     els.promptInput.focus();
-    showToast(type === "video" ? "已将结果加入参考视频" : `已加入参考图（${draftMedia.imageReferences.length}/8）`);
+    showToast(type === "video" ? "已将结果加入参考视频" : `已加入参考图（${draftMedia.imageReferences.length}/9）`);
   } catch (error) {
     const message = error?.message === "Failed to fetch"
       ? "无法读取该结果，图片地址可能已过期或不允许跨域下载"
@@ -4679,7 +5182,7 @@ async function handleReferenceFiles(event, kind) {
           draftMedia.videoImages = uniqueMedia([...draftMedia.videoImages, ...items]).slice(0, 6);
         }
       } else {
-        draftMedia.imageReferences = uniqueMedia([...draftMedia.imageReferences, ...items]).slice(0, 8);
+        draftMedia.imageReferences = uniqueMedia([...draftMedia.imageReferences, ...items]).slice(0, 9);
         syncImageModeFromReferences();
       }
     } else if (kind === "video-reference") {
@@ -4770,9 +5273,11 @@ function renderDraftMediaTray() {
   const items = [];
   if (activeMode !== "image") {
     els.draftMediaTray.hidden = true;
+    if (els.referencePanel) els.referencePanel.hidden = true;
     return;
   }
-  if (state.settings.visualMode === "image") {
+  const isVideoMode = state.settings.visualMode === "video";
+  if (!isVideoMode) {
     draftMedia.imageReferences.forEach((item) => items.push({ key: "imageReferences", label: "参考图", item }));
   } else {
     if (draftMedia.firstFrame) items.push({ key: "firstFrame", label: "首帧", item: draftMedia.firstFrame });
@@ -4781,19 +5286,27 @@ function renderDraftMediaTray() {
     draftMedia.videoReferences.forEach((item) => items.push({ key: "videoReferences", label: "参考视频", item }));
     if (draftMedia.audio) items.push({ key: "audio", label: "音频", item: draftMedia.audio });
   }
-  els.draftMediaTray.hidden = !items.length;
-  els.draftMediaTray.innerHTML = items
+  const limit = isVideoMode ? 15 : 9;
+  if (els.referencePanel) els.referencePanel.hidden = false;
+  if (els.referenceCount) els.referenceCount.textContent = `${items.length} / ${limit}`;
+  if (els.referenceSlotHint) els.referenceSlotHint.hidden = !isVideoMode;
+  els.draftMediaTray.hidden = false;
+  const mediaCells = items
     .map(({ key, label, item }) => {
       const isImage = item.mime.startsWith("image/");
       return `
-        <div class="draft-media">
+        <div class="draft-media" title="${escapeAttr(`${label} · ${item.name}`)}">
           ${isImage ? `<img src="${escapeAttr(item.dataUrl)}" alt="">` : `<span class="draft-file-icon">${escapeHtml(fileTypeLabel(item.mime))}</span>`}
-          <span>${escapeHtml(label)} · ${escapeHtml(trimFileName(item.name))}</span>
+          <span class="draft-media-badge">${escapeHtml(label)}</span>
           <button type="button" aria-label="移除" data-remove-media="${escapeAttr(key)}" data-media-id="${escapeAttr(item.id)}">×</button>
         </div>
       `;
     })
     .join("");
+  const addCell = items.length < limit
+    ? `<button type="button" class="reference-add" data-add-media="${isVideoMode ? "video" : "image"}" aria-label="添加参考素材">＋</button>`
+    : "";
+  els.draftMediaTray.innerHTML = mediaCells + addCell;
 }
 
 function removeDraftMedia(key, id) {
@@ -4978,7 +5491,7 @@ function fillGroupedModelSelect(select, type, current) {
 function modelTypeLabel(type) {
   if (type === "video") return "视频";
   if (type === "image") return "图片";
-  return "语言";
+  return "语言模型";
 }
 
 function openModelPicker() {
@@ -5861,6 +6374,9 @@ function inferModelProfile(modelId, raw = {}) {
   if (isSora2Model(id)) return { id: modelId, label: modelId, vendor: "OpenAI", type: "video", provider: "sora", capabilities: ["视频"] };
   if (id.includes("veo")) return { id: modelId, label: modelId, vendor: "Google", type: "video", provider: "veo", capabilities: ["视频"] };
   if (id.includes("seedance")) return { id: modelId, label: modelId, vendor: "Doubao", type: "video", provider: "seedance", capabilities: ["视频"] };
+  if (isMuseVideoModel(id)) {
+    return { id: modelId, label: modelId, vendor: "Muse", type: "video", provider: "muse", capabilities: ["文生视频", "图生视频", "首帧", "参考图"] };
+  }
   if (id.includes("grok") && id.includes("video")) {
     return { id: modelId, label: modelId, vendor: "xAI", type: "video", provider: "xai", capabilities: ["文生视频", "图生视频"] };
   }
@@ -5948,6 +6464,7 @@ function isHiddenModel(modelId) {
 
 function inferProvider(id, owner = "") {
   const model = String(id || "").toLowerCase();
+  if (isMuseVideoModel(model)) return "muse";
   if (/kling/.test(model)) return "kling";
   if (isSora2Model(model)) return "sora";
   if (/seedance/.test(model)) return "seedance";
@@ -6011,7 +6528,12 @@ function effectiveImageSize() {
 
 function effectiveImageOutputSize(modelId = state.settings.imageModel) {
   const profile = getModelProfile(modelId);
-  if (profile?.provider === "gemini") return geminiNativeImageSize();
+  if (isSeedreamModel(modelId)) {
+    return SEEDREAM_SIZE_OPTIONS.some((option) => option.value === state.settings.imageSize)
+      ? state.settings.imageSize
+      : "2K";
+  }
+  if (profile?.provider === "gemini") return isLegacyGeminiImageModel(modelId) ? "auto" : geminiNativeImageSize();
   if (isGrokImagineImageModel(modelId)) return grokImageResolution();
   return imageRequestSize(modelId);
 }
@@ -6045,6 +6567,25 @@ function isGptImageModel(modelId) {
 
 function isGptImage2Model(modelId) {
   return /^gpt-image[-_.]?2(?:$|[-_.])/i.test(String(modelId || ""));
+}
+
+function isGptImage25PlusModel(modelId) {
+  return /^gpt-image[-_.]?2\.[5-9](?:$|[-_.])/i.test(String(modelId || ""));
+}
+
+function isSeedreamModel(modelId) {
+  return /seedream/i.test(String(modelId || ""));
+}
+
+function isLegacyGeminiImageModel(modelId) {
+  return /^gemini-2\.5-flash-image(?:-preview)?$/i.test(String(modelId || "").trim());
+}
+
+function isMuseVideoModel(modelId) {
+  const id = String(modelId || "").trim().toLowerCase();
+  if (!id.includes("muse")) return false;
+  if (/(image|imagen|dall|flux|banana|seedream|gpt-image|midjourney|mj)/.test(id)) return false;
+  return true;
 }
 
 function normalizeLegacyGptImageSize(value, aspect = "1:1") {
@@ -6114,8 +6655,11 @@ function normalizeQualityForModel(quality, model) {
 
 function normalizeImageQualityForModel(modelId, quality) {
   const value = String(quality || "").toLowerCase();
-  if (isGptImage2Model(modelId)) {
-    return ["low", "medium", "high"].includes(value) ? value : "medium";
+  if (isGptImageModel(modelId)) {
+    const allowed = ["auto", "low", "medium", "high"];
+    if (isGptImage25PlusModel(modelId)) allowed.push("xhigh", "max");
+    if (allowed.includes(value)) return value;
+    return isGptImage2Model(modelId) ? "medium" : "auto";
   }
   return quality || "auto";
 }
@@ -6279,6 +6823,18 @@ if (typeof module !== "undefined" && module.exports) {
     isSeedance2Model,
     isSeedance25Model,
     isSeedance20UnifiedModel,
+    MODEL_CATALOG,
+    getModelProfile,
+    inferModelProfile,
+    isGptImageModel,
+    isGptImage25PlusModel,
+    isSeedreamModel,
+    isLegacyGeminiImageModel,
+    isMuseVideoModel,
+    normalizeMuseDuration,
+    seedreamSizeFromTier,
+    gptImageBackgroundValue,
+    gptImageOutputFormatValue,
     isSora2Model,
     isSora2ProModel,
     isVeoModel,
@@ -6298,6 +6854,8 @@ if (typeof module !== "undefined" && module.exports) {
     parseApiJsonResponse,
     responseError,
     parseLinkedNewApiSettings,
+    parseSub2ApiEmbedParams,
+    selectSub2ApiKey,
     resolveWebSearchModel,
     resolveGeminiImageRoute,
     resolveChatProtocol,
@@ -6340,6 +6898,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (linkedSettingsApplied) {
     setConnection("已导入 NewAPI 配置", "ok");
     setTimeout(() => fetchModels(), 0);
+  } else if (parseSub2ApiEmbedParams(window.location)) {
+    applySub2ApiEmbedSettings().then((applied) => {
+      if (applied) {
+        render();
+        setConnection("已导入 Sub2API 配置", "ok");
+        fetchModels();
+      } else if (!state.settings.apiKey) {
+        showMissingSetting("请先配置 API Key");
+      }
+    });
   } else if (!state.settings.apiKey) {
     setTimeout(() => {
       showMissingSetting("请先配置 API Key");

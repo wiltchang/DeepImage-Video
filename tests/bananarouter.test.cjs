@@ -123,7 +123,8 @@ test("BananaRouter GPT Image uses JSON response instead of image streaming", () 
   assert.equal(request.endpoint, "/v1/images/generations");
   assert.equal(body.response_format, undefined);
   assert.equal(body.stream, undefined);
-  assert.equal(body.output_format, undefined);
+  assert.equal(body.output_format, "png");
+  assert.equal(body.background, "auto");
 });
 
 test("GPT Image 2 exposes official popular sizes and maps automatic ratios", () => {
@@ -146,7 +147,7 @@ test("GPT Image 2 exposes official popular sizes and maps automatic ratios", () 
   assert.equal(body.quality, "high");
 });
 
-test("GPT Image models expose styles and apply them through the prompt", () => {
+test("GPT Image models have no style control (official profile)", () => {
   setTestSettings({
     ...bananaSettings,
     imageModel: "gpt-image-2",
@@ -160,8 +161,9 @@ test("GPT Image models expose styles and apply them through the prompt", () => {
   const styles = imageStyleOptionsForModel().map((option) => option.value);
   const body = JSON.parse(buildImageRequest("雨夜街道", [], false).body);
 
-  assert.equal(styles.includes("cinematic"), true);
-  assert.match(body.prompt, /雨夜街道[\s\S]*电影感构图/);
+  assert.deepEqual(styles, []);
+  assert.match(body.prompt, /雨夜街道/);
+  assert.doesNotMatch(body.prompt, /电影感构图/);
   assert.equal(body.style, undefined);
   assert.equal(body.stream, undefined);
 });
