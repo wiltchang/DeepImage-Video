@@ -3891,7 +3891,7 @@ summary:active,
 /* ---------- Visual workbench: three columns ---------- */
 .workspace.visual-workspace {
   display: grid;
-  grid-template-columns: 348px minmax(0, 1fr);
+  grid-template-columns: 424px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
 }
 
@@ -4812,7 +4812,7 @@ summary:active,
   transition: transform 0.15s ease;
 }
 
-.summary-settings-block.collapsed .summary-caret {
+.summary-settings-block:not(.open) .summary-caret {
   transform: rotate(180deg);
 }
 
@@ -4838,4 +4838,294 @@ summary:active,
   .chat-records-rail {
     margin-bottom: 12px;
   }
+}
+
+/* ==========================================================================
+   Round 4 overlay (appended): the settings card is a true popover anchored
+   above the pinned composer footer (BoostMax behaviour — the summary row
+   and generate button stay fixed at the bottom of the creation column and
+   the column no longer grows or scrolls because of parameters). The visual
+   composer takes BoostMax metrics: 24px card radius, 20/22 padding,
+   roomier tiles / pills / reference cells, 54px generate button, and
+   two-line summary blocks whose value line never ellipsizes. The composer
+   column widened to 424px (visual grid rule above) so the longest model
+   name + settings summary fit side by side at 1280/1920 widths.
+   ========================================================================== */
+
+/* ---------- Composer structure: main flexes, footer pinned ---------- */
+.composer-main {
+  display: contents;
+}
+
+.composer-footer {
+  flex: 0 0 auto;
+}
+
+.workspace.visual-workspace .composer-card {
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+  padding: 20px 22px;
+  border-radius: 24px;
+}
+
+.workspace.visual-workspace .composer-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.workspace.visual-workspace .composer-footer {
+  position: relative;
+}
+
+.workspace.visual-workspace #promptInput {
+  flex: 1 1 auto;
+  min-height: 72px;
+  max-height: none;
+}
+
+/* ---------- Settings popover (replaces the in-flow settings card) ---------- */
+.settings-popover {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 10px);
+  z-index: 45;
+  margin: 0;
+  padding: 20px;
+  max-height: min(60vh, 640px);
+  overflow-y: auto;
+  border-radius: 22px;
+  box-shadow: var(--shadow-lg, 0 18px 44px rgba(15, 23, 42, 0.16));
+}
+
+.settings-popover[hidden] {
+  display: none;
+}
+
+.settings-popover .setting-row {
+  padding: 10px 0;
+}
+
+.settings-popover .output-settings > .setting-row:first-child {
+  padding-top: 0;
+}
+
+.settings-popover .output-settings > .setting-row:last-child {
+  padding-bottom: 0;
+}
+
+/* ---------- BoostMax spacing: tiles, pills, reference cells ---------- */
+.tile-grid {
+  gap: 12px;
+}
+
+.ratio-tile {
+  min-height: 68px;
+  border-radius: 14px;
+  justify-content: center;
+}
+
+.pill-grid {
+  gap: 10px;
+}
+
+.pill-option {
+  padding: 0 18px;
+}
+
+.reference-grid {
+  gap: 12px;
+}
+
+.reference-grid .draft-media {
+  border-radius: 16px;
+}
+
+.reference-add {
+  border-radius: 16px;
+}
+
+/* ---------- Summary row: two-line blocks (visual mode) ---------- */
+.summary-value-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.workspace.visual-workspace .composer-summary {
+  gap: 8px;
+}
+
+.workspace.visual-workspace .summary-block {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 3px;
+  min-height: 52px;
+  padding: 8px 13px;
+  border-radius: 16px;
+}
+
+.workspace.visual-workspace .summary-label {
+  font-size: 12px;
+}
+
+.workspace.visual-workspace .summary-model-block {
+  flex: 0 1 auto;
+}
+
+.workspace.visual-workspace .summary-settings-block {
+  flex: 1 1 auto;
+}
+
+.workspace.visual-workspace .summary-block .model-picker-trigger {
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  gap: 6px;
+}
+
+.workspace.visual-workspace .summary-block .model-picker-trigger strong {
+  font-size: 14px;
+}
+
+.workspace.visual-workspace .summary-block .vendor-icon {
+  width: 24px;
+  height: 24px;
+  flex-basis: 24px;
+  border-radius: 7px;
+}
+
+.workspace.visual-workspace .summary-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: visible;
+  text-overflow: clip;
+  font-size: 14px;
+}
+
+/* ---------- Generate button (visual mode) ---------- */
+.workspace.visual-workspace .send-button {
+  min-height: 54px;
+  border-radius: 18px;
+  font-size: 16px;
+}
+
+/* ---------- Preview head: subtitle + hint pill removed, one row ---------- */
+.visual-head {
+  align-items: center;
+}
+
+.visual-head h2 {
+  margin-bottom: 0;
+}
+
+@media (max-width: 900px) {
+  .workspace.visual-workspace .composer-card {
+    padding: 16px;
+    border-radius: 20px;
+  }
+
+  .settings-popover {
+    max-height: 44dvh;
+    padding: 16px;
+  }
+}
+
+/* ==========================================================================
+   Round 4b (appended): session records live in the left sidebar in visual
+   modes and move back to the chat right rail in chat mode; the visual
+   right rail keeps only the generation queue with live status counts.
+   ========================================================================== */
+
+/* ---------- Sidebar records (visual modes) ---------- */
+.sidebar-records {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-top: 8px;
+}
+
+.sidebar-records[hidden] {
+  display: none;
+}
+
+.sidebar.collapsed .sidebar-records {
+  display: none;
+}
+
+.sidebar-records-heading {
+  padding: 10px 14px 8px;
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.session-mount-sidebar {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.session-mount-sidebar .search-wrap {
+  padding: 0 12px 10px;
+}
+
+.session-mount-sidebar .session-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 8px 10px;
+}
+
+/* ---------- Visual right rail: generation queue only ---------- */
+.visual-inspector .queue-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.visual-inspector .queue-panel .section-heading {
+  padding: 0 4px 10px;
+  border: 0;
+  color: var(--text-main);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.queue-stats {
+  display: flex;
+  gap: 10px;
+  padding: 0 4px 12px;
+}
+
+.queue-stat {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-panel);
+}
+
+.queue-stat-label {
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.queue-stat-value {
+  font-size: 16px;
+  font-weight: 750;
+  line-height: 1;
 }

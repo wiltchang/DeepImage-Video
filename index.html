@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#f8f8f9" />
     <title>DeepImage2-Video</title>
     <link rel="icon" href="./favicon.ico?v=20260727-40" sizes="any" />
-    <link rel="stylesheet" href="./styles.css?v=20261117-r4" />
+    <link rel="stylesheet" href="./styles.css?v=20261117-r5" />
   </head>
   <body>
     <div id="app" class="app-shell">
@@ -32,6 +32,20 @@
               <span class="menu-label">语言模型</span>
             </button>
           </nav>
+        </div>
+
+        <div id="sidebarRecords" class="sidebar-records">
+          <div class="section-heading sidebar-records-heading">
+            <span>创作记录</span>
+          </div>
+          <div id="sessionMountSidebar" class="session-mount session-mount-sidebar">
+            <div id="sessionBrowser" class="session-browser">
+              <div class="search-wrap">
+                <input id="sessionSearch" class="search-input" type="search" placeholder="搜索视觉创作" autocomplete="off" />
+              </div>
+              <nav id="sessionList" class="session-list" aria-label="会话列表"></nav>
+            </div>
+          </div>
         </div>
 
         <div class="sidebar-footer">
@@ -77,10 +91,8 @@
               <div class="visual-head">
                 <div>
                   <h2 id="visualPanelTitle">图片生成</h2>
-                  <p id="visualPanelSubtitle">支持文生图、图生图、参考图和模型专属参数。</p>
                 </div>
                 <div class="visual-head-actions">
-                  <span id="visualRequestHint" class="hint-pill">OpenAI 兼容</span>
                   <button id="clearImages" class="mini-button" type="button">清空会话</button>
                 </div>
               </div>
@@ -96,24 +108,19 @@
             </div>
 
             <aside class="visual-inspector">
-              <section class="inspector-panel history-panel">
+              <section class="inspector-panel queue-panel">
                 <div class="section-heading">
-                  <span>创作记录</span>
+                  <span>生成队列</span>
                 </div>
-                <div id="sessionMountInspector" class="session-mount session-mount-inspector">
-                  <div id="sessionBrowser" class="session-browser">
-                    <div class="search-wrap">
-                      <input id="sessionSearch" class="search-input" type="search" placeholder="搜索视觉创作" autocomplete="off" />
-                    </div>
-                    <nav id="sessionList" class="session-list" aria-label="会话列表"></nav>
+                <div class="queue-stats">
+                  <div class="queue-stat">
+                    <span class="queue-stat-label">排队中</span>
+                    <strong id="queueWaitingCount" class="queue-stat-value">0</strong>
                   </div>
-                </div>
-              </section>
-
-              <section class="inspector-panel">
-                <div class="section-heading">
-                  <span>任务记录</span>
-                  <span id="taskCount" class="soft-count">0</span>
+                  <div class="queue-stat">
+                    <span class="queue-stat-label">生成中</span>
+                    <strong id="queueRunningCount" class="queue-stat-value">0</strong>
+                  </div>
                 </div>
                 <div id="imageHistory" class="history-list"></div>
               </section>
@@ -123,6 +130,7 @@
 
         <form id="composer" class="composer" autocomplete="off">
           <div class="composer-card">
+            <div class="composer-main">
             <div id="composerTitleRow" class="composer-title-row">
               <h3 id="composerTitle">图片生成</h3>
               <button id="newSessionBtn" class="new-session-pill" type="button">+ 新建</button>
@@ -150,8 +158,10 @@
             </div>
 
             <textarea id="promptInput" rows="1" placeholder="描述要生成的画面；上传参考图可进行图生图" aria-label="输入消息"></textarea>
+            </div>
 
-            <div id="visualSettingsCard" class="settings-card" hidden>
+            <div class="composer-footer">
+            <div id="visualSettingsCard" class="settings-card settings-popover" hidden>
               <div id="imageOutputSettings" class="output-settings">
                 <div class="setting-row">
                   <span>图片比例</span>
@@ -237,16 +247,19 @@
                     <div id="modelPopoverList" class="model-popover-list" role="listbox" aria-label="选择模型"></div>
                   </div>
                 </div>
-                <div id="settingsSummaryBlock" class="summary-block summary-settings-block" role="button" tabindex="0" aria-expanded="true" hidden>
+                <div id="settingsSummaryBlock" class="summary-block summary-settings-block" role="button" tabindex="0" aria-expanded="false" hidden>
                   <span id="settingsSummaryLabel" class="summary-label">图片设置</span>
-                  <strong id="settingsSummaryText" class="summary-value"></strong>
-                  <span class="summary-caret" aria-hidden="true">⌃</span>
+                  <span class="summary-value-row">
+                    <strong id="settingsSummaryText" class="summary-value"></strong>
+                    <span class="summary-caret" aria-hidden="true">⌃</span>
+                  </span>
                 </div>
               </div>
               <div class="send-wrap">
                 <button id="stopButton" class="stop-button" type="button" hidden>停止</button>
                 <button id="sendButton" class="send-button" type="submit">立即生成图片</button>
               </div>
+            </div>
             </div>
           </div>
         </form>
@@ -424,6 +437,6 @@
     <datalist id="modelOptions"></datalist>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-    <script src="./app.js?v=20261117-r4" defer></script>
+    <script src="./app.js?v=20261117-r5" defer></script>
   </body>
 </html>

@@ -380,7 +380,7 @@ let draftMedia = createEmptyDraftMedia();
 let viewerZoom = 1;
 let modelPopoverType = "chat";
 let modelPopoverOpen = false;
-let settingsCardCollapsed = false;
+let settingsPopoverOpen = false;
 let chatAttachments = [];
 let settingsFormSnapshot = "";
 let activeSettingsTab = "api";
@@ -407,8 +407,9 @@ function initElements() {
     "sidebarModelName",
     "collapseSidebar",
     "sessionBrowser",
+    "sidebarRecords",
+    "sessionMountSidebar",
     "sessionMountChat",
-    "sessionMountInspector",
     "sessionSearch",
     "sessionList",
     "openSettingsSide",
@@ -423,14 +424,13 @@ function initElements() {
     "newSessionBtn",
     "newChatSessionBtn",
     "visualPanelTitle",
-    "visualPanelSubtitle",
-    "visualRequestHint",
     "visualCanvas",
     "visualEmptyText",
     "imageEmpty",
     "imageGrid",
     "clearImages",
-    "taskCount",
+    "queueWaitingCount",
+    "queueRunningCount",
     "imageHistory",
     "composer",
     "referencePanel",
@@ -1388,20 +1388,36 @@ function bindEvents() {
     renderVisualMeta();
   });
   els.quickModelButton.addEventListener("click", toggleModelPopover);
-  els.settingsSummaryBlock.addEventListener("click", toggleSettingsCardCollapsed);
+  els.settingsSummaryBlock.addEventListener("click", toggleSettingsPopover);
   els.settingsSummaryBlock.addEventListener("keydown", (event) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      toggleSettingsCardCollapsed();
+      toggleSettingsPopover();
     }
   });
   document.addEventListener("click", (event) => {
+    // Use the composed path captured at dispatch time: option clicks inside
+    // the settings popover re-render (and detach) the clicked button before
+    // this listener runs, so closest() on the live target alone would miss.
+    const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+    const pathHasId = (id) => path.some((node) => node && node.id === id);
+    if (settingsPopoverOpen
+      && !pathHasId("visualSettingsCard")
+      && !pathHasId("settingsSummaryBlock")
+      && !event.target.closest("#visualSettingsCard")
+      && !event.target.closest("#settingsSummaryBlock")) {
+      closeSettingsPopover();
+    }
     if (!modelPopoverOpen) return;
+    if (pathHasId("modelPopover") || pathHasId("quickModelButton")) return;
     if (event.target.closest("#modelPopover") || event.target.closest("#quickModelButton")) return;
     closeModelPopover();
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeModelPopover();
+    if (event.key === "Escape") {
+      closeModelPopover();
+      closeSettingsPopover();
+    }
   });
   els.stopButton.addEventListener("click", stopRequest);
   els.uploadImageRefButton.addEventListener("click", () => els.imageReferenceFiles.click());
@@ -1543,12 +1559,14 @@ function renderModes() {
   if (els.workspace) els.workspace.classList.toggle("visual-workspace", isVisual);
   els.chatPanel.classList.toggle("active", !isVisual);
   els.imagePanel.classList.toggle("active", isVisual);
-  const sessionMount = isVisual ? els.sessionMountInspector : els.sessionMountChat;
+  const sessionMount = isVisual ? els.sessionMountSidebar : els.sessionMountChat;
   if (els.sessionBrowser && sessionMount && els.sessionBrowser.parentElement !== sessionMount) {
     sessionMount.appendChild(els.sessionBrowser);
   }
+  if (els.sidebarRecords) els.sidebarRecords.hidden = !isVisual;
   if (els.composerTitleRow) els.composerTitleRow.hidden = !isVisual;
   closeModelPopover();
+  closeSettingsPopover();
   if (els.composerTitle && !isVisual) els.composerTitle.textContent = "语言模型";
   els.promptInput.placeholder = isVisual
     ? visualMode === "video"
@@ -1704,7 +1722,7 @@ function renderOutputOptions() {
   const isVideo = state.settings.visualMode === "video";
   const usesPixelSize = usesPixelVideoSizeOptions(state.settings.videoModel);
   const grokImageSelected = isGrokImagineImageModel(state.settings.imageModel);
-  applySettingsCardVisibility();
+  applySettingsPopoverVisibility();
   els.imageOutputSettings.hidden = isVideo;
   els.videoOutputSettings.hidden = !isVideo;
   const isDallE3 = state.settings.imageModel === "dall-e-3";
@@ -1860,20 +1878,33 @@ function updateSettingsSummary() {
   }
 }
 
-function applySettingsCardVisibility() {
+function applySettingsPopoverVisibility() {
   if (els.visualSettingsCard) {
-    els.visualSettingsCard.hidden = activeMode !== "image" || settingsCardCollapsed;
+    els.visualSettingsCard.hidden = activeMode !== "image" || !settingsPopoverOpen;
   }
   if (els.settingsSummaryBlock) {
-    els.settingsSummaryBlock.classList.toggle("collapsed", settingsCardCollapsed);
-    els.settingsSummaryBlock.setAttribute("aria-expanded", String(!settingsCardCollapsed));
+    els.settingsSummaryBlock.classList.toggle("open", settingsPopoverOpen);
+    els.settingsSummaryBlock.setAttribute("aria-expanded", String(settingsPopoverOpen));
   }
 }
 
-function toggleSettingsCardCollapsed() {
+function openSettingsPopover() {
   if (activeMode !== "image") return;
-  settingsCardCollapsed = !settingsCardCollapsed;
-  applySettingsCardVisibility();
+  closeModelPopover();
+  settingsPopoverOpen = true;
+  applySettingsPopoverVisibility();
+}
+
+function closeSettingsPopover() {
+  if (!settingsPopoverOpen) return;
+  settingsPopoverOpen = false;
+  applySettingsPopoverVisibility();
+}
+
+function toggleSettingsPopover() {
+  if (activeMode !== "image") return;
+  if (settingsPopoverOpen) closeSettingsPopover();
+  else openSettingsPopover();
 }
 
 function imageSizeOptionsForModel() {
@@ -4642,7 +4673,12 @@ function renderImages() {
   const shouldFollowNewTask = !sessionChanged && hasNewTask && distanceFromBottom < 96;
   const previousScrollTop = els.visualCanvas.scrollTop;
 
-  els.taskCount.textContent = String(tasks.length);
+  if (els.queueWaitingCount) {
+    els.queueWaitingCount.textContent = String(tasks.filter((task) => task.status === "submitted").length);
+  }
+  if (els.queueRunningCount) {
+    els.queueRunningCount.textContent = String(tasks.filter((task) => task.status === "running").length);
+  }
   els.imageEmpty.hidden = tasks.length > 0;
   els.visualEmptyText.textContent =
     visualMode === "video"
@@ -5183,14 +5219,7 @@ function clearVisualTasks() {
 
 function renderVisualMeta() {
   const visualMode = state.settings.visualMode;
-  const modelId = visualMode === "video" ? state.settings.videoModel : state.settings.imageModel;
-  const profile = getModelProfile(modelId);
   els.visualPanelTitle.textContent = visualMode === "video" ? "视频生成" : "图片生成";
-  els.visualPanelSubtitle.textContent =
-    visualMode === "video"
-      ? `适配 SeedDance、Grok、Veo 等视频模型；${isVisualContextEnabled() ? "当前会话已启用上下文。" : "当前会话未启用上下文。"}`
-      : `支持文生图、图生图和参考图；${isVisualContextEnabled() ? "当前会话已启用上下文。" : "当前会话未启用上下文。"}`;
-  els.visualRequestHint.textContent = visualMode === "video" ? videoModeLabel(profile) : imageModeLabel(profile);
   if (els.composerTitle && activeMode === "image") {
     els.composerTitle.textContent = visualMode === "video" ? "视频生成" : "图片生成";
   }
@@ -5537,6 +5566,7 @@ function toggleModelPopover() {
 }
 
 function openModelPopover() {
+  closeSettingsPopover();
   modelPopoverType = activeMode === "image" ? state.settings.visualMode : "chat";
   renderModelPopover();
   modelPopoverOpen = true;
