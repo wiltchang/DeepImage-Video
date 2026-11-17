@@ -3892,24 +3892,19 @@ summary:active,
 .workspace.visual-workspace {
   display: grid;
   grid-template-columns: 348px minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr);
-}
-
-.workspace.visual-workspace .topbar {
-  grid-column: 1 / -1;
-  grid-row: 1;
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .workspace.visual-workspace .composer {
   position: static;
   grid-column: 1;
-  grid-row: 2;
+  grid-row: 1;
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
   height: 100%;
   min-height: 0;
-  padding: 0 0 16px 16px;
+  padding: 16px 0 16px 16px;
   z-index: auto;
   pointer-events: auto;
 }
@@ -3926,11 +3921,11 @@ summary:active,
 
 .workspace.visual-workspace #imagePanel {
   grid-column: 2;
-  grid-row: 2;
+  grid-row: 1;
   box-sizing: border-box;
   min-width: 0;
   height: 100%;
-  padding: 0 16px 16px 0;
+  padding: 16px 16px 16px 0;
 }
 
 .workspace.visual-workspace .visual-shell {
@@ -4059,17 +4054,12 @@ summary:active,
 @media (max-width: 900px) {
   .workspace.visual-workspace {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto minmax(0, 1fr);
-  }
-
-  .workspace.visual-workspace .topbar {
-    grid-column: 1;
-    grid-row: 1;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .workspace.visual-workspace .composer {
     grid-column: 1;
-    grid-row: 2;
+    grid-row: 1;
     height: auto;
     padding: 0 12px 8px;
   }
@@ -4080,7 +4070,7 @@ summary:active,
 
   .workspace.visual-workspace #imagePanel {
     grid-column: 1;
-    grid-row: 3;
+    grid-row: 2;
     padding: 0 12px 12px;
   }
 }
@@ -4558,5 +4548,294 @@ summary:active,
 
   .session-mount-chat .session-list {
     max-height: 260px;
+  }
+}
+
+/* ==========================================================================
+   Polish overlay (appended): no global topbar (columns share one top line
+   at 16px and one bottom line at 16px inside the 100dvh shell), chat
+   composer without the title row, flat records rails in both modes,
+   BoostMax-style model chip + popover, collapsible settings card.
+   Full height comes from: .app-shell 100dvh -> .workspace flex/grid single
+   minmax(0,1fr) row -> columns height:100% with internal overflow scroll.
+   ========================================================================== */
+
+/* ---------- Mobile drawer button (replaces the one from the old topbar) ---------- */
+.mobile-menu-button {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  z-index: 26;
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---------- Chat composer: no title row (visual mode keeps it) ---------- */
+.composer-title-row[hidden] {
+  display: none;
+}
+
+/* ---------- Records rails: one flat style for both modes ---------- */
+.chat-records-rail {
+  margin: 0;
+  padding: 2px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+.visual-inspector .history-panel {
+  background: transparent;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.chat-records-rail .section-heading,
+.visual-inspector .history-panel .section-heading {
+  padding: 0 4px 10px;
+  border: 0;
+  color: var(--text-main);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.records-new-pill {
+  flex: 0 0 auto;
+  min-height: 26px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-main);
+  background: var(--bg-panel);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.records-new-pill:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+}
+
+.session-mount-inspector .search-wrap,
+.session-mount-chat .search-wrap {
+  padding: 0 4px 10px;
+}
+
+.session-mount-inspector .session-list,
+.session-mount-chat .session-list {
+  padding: 2px 0 10px;
+}
+
+.chat-records-rail .search-input,
+.visual-inspector .history-panel .search-input {
+  border-color: var(--border);
+  background: var(--bg-panel);
+}
+
+/* ---------- Chat layout: full height, composer docked to the column bottom ---------- */
+#chatPanel.active {
+  padding: 16px 24px;
+}
+
+.workspace:not(.visual-workspace) .composer {
+  left: 24px;
+  right: 340px;
+  bottom: 16px;
+}
+
+.workspace:not(.visual-workspace) .composer-card {
+  max-width: min(880px, calc(100% - 32px));
+}
+
+/* Chat bottom row: [stream][thinking][model chip] ... [send] */
+.workspace:not(.visual-workspace) .composer-row {
+  justify-content: flex-start;
+}
+
+.workspace:not(.visual-workspace) .composer-summary {
+  flex: 0 1 auto;
+}
+
+.workspace:not(.visual-workspace) .summary-model-block {
+  flex: 0 1 auto;
+}
+
+.workspace:not(.visual-workspace) .model-picker-trigger {
+  max-width: 300px;
+}
+
+.workspace:not(.visual-workspace) .send-wrap {
+  margin-left: auto;
+}
+
+/* ---------- Model chip + popover ---------- */
+.vendor-icon {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #ffffff;
+  background: linear-gradient(135deg, #3f4756, #141922);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.composer-summary .model-picker-trigger > span.vendor-icon {
+  color: #ffffff;
+  font-size: 12px;
+}
+
+.model-chip-caret {
+  flex: 0 0 auto;
+  color: var(--text-soft);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.summary-model-block {
+  position: relative;
+}
+
+.model-popover {
+  position: absolute;
+  left: -13px;
+  bottom: calc(100% + 10px);
+  z-index: 40;
+  width: min(344px, calc(100vw - 32px));
+  max-height: min(380px, 52vh);
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-lg, 0 18px 44px rgba(15, 23, 42, 0.16));
+}
+
+.model-popover[hidden] {
+  display: none;
+}
+
+.model-popover-list {
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.model-popover-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: var(--text-main);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.model-popover-item:hover {
+  background: var(--bg-hover);
+}
+
+.model-popover-item.active {
+  border-color: var(--border-strong);
+  background: var(--bg-panel-soft);
+}
+
+.model-popover-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.model-popover-text strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.model-popover-text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-soft);
+  font-size: 11px;
+}
+
+.model-popover-check {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #ffffff;
+  background: #7c3aed;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.model-popover-empty {
+  padding: 14px;
+  color: var(--text-soft);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ---------- Settings summary: click to collapse / expand the card ---------- */
+.summary-settings-block {
+  cursor: pointer;
+}
+
+.summary-caret {
+  flex: 0 0 auto;
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+
+.summary-settings-block.collapsed .summary-caret {
+  transform: rotate(180deg);
+}
+
+@media (max-width: 900px) {
+  .workspace {
+    padding-top: 48px;
+  }
+
+  #chatPanel.active {
+    padding: 12px;
+  }
+
+  .workspace:not(.visual-workspace) .composer {
+    left: 0;
+    right: 0;
+    bottom: 0;
+  }
+
+  .workspace:not(.visual-workspace) .composer-card {
+    max-width: none;
+  }
+
+  .chat-records-rail {
+    margin-bottom: 12px;
   }
 }

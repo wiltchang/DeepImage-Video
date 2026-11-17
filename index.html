@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#f8f8f9" />
     <title>DeepImage2-Video</title>
     <link rel="icon" href="./favicon.ico?v=20260727-40" sizes="any" />
-    <link rel="stylesheet" href="./styles.css?v=20261117-r3" />
+    <link rel="stylesheet" href="./styles.css?v=20261117-r4" />
   </head>
   <body>
     <div id="app" class="app-shell">
@@ -51,15 +51,7 @@
       </aside>
 
       <main id="workspace" class="workspace">
-        <header class="topbar">
-          <div class="title-line">
-            <button id="mobileMenu" class="icon-button mobile-only" type="button" title="打开侧边栏" aria-label="打开侧边栏">☰</button>
-            <div class="title-block">
-              <h1 id="workspaceTitle">DeepImage2-Video</h1>
-              <span id="modelBadge" class="model-badge">未选择模型</span>
-            </div>
-          </div>
-        </header>
+        <button id="mobileMenu" class="icon-button mobile-menu-button mobile-only" type="button" title="打开侧边栏" aria-label="打开侧边栏">☰</button>
 
         <section id="chatPanel" class="content-panel" aria-label="语言模型">
           <div class="chat-main">
@@ -73,6 +65,7 @@
           <aside class="chat-records-rail">
             <div class="section-heading">
               <span>对话记录</span>
+              <button id="newChatSessionBtn" class="records-new-pill" type="button">+ 新建</button>
             </div>
             <div id="sessionMountChat" class="session-mount session-mount-chat"></div>
           </aside>
@@ -130,7 +123,7 @@
 
         <form id="composer" class="composer" autocomplete="off">
           <div class="composer-card">
-            <div class="composer-title-row">
+            <div id="composerTitleRow" class="composer-title-row">
               <h3 id="composerTitle">图片生成</h3>
               <button id="newSessionBtn" class="new-session-pill" type="button">+ 新建</button>
             </div>
@@ -235,15 +228,19 @@
               <div id="composerSummary" class="composer-summary">
                 <div class="summary-block summary-model-block">
                   <span class="summary-label">模型</span>
-                  <button id="quickModelButton" class="model-picker-trigger" type="button">
-                    <span id="quickModelVendor">模型</span>
+                  <button id="quickModelButton" class="model-picker-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+                    <span id="quickModelVendor" class="vendor-icon" aria-hidden="true">✦</span>
                     <strong id="quickModelLabel">未选择模型</strong>
-                    <span aria-hidden="true">⌄</span>
+                    <span class="model-chip-caret" aria-hidden="true">⌄</span>
                   </button>
+                  <div id="modelPopover" class="model-popover" hidden>
+                    <div id="modelPopoverList" class="model-popover-list" role="listbox" aria-label="选择模型"></div>
+                  </div>
                 </div>
-                <div id="settingsSummaryBlock" class="summary-block" hidden>
+                <div id="settingsSummaryBlock" class="summary-block summary-settings-block" role="button" tabindex="0" aria-expanded="true" hidden>
                   <span id="settingsSummaryLabel" class="summary-label">图片设置</span>
                   <strong id="settingsSummaryText" class="summary-value"></strong>
+                  <span class="summary-caret" aria-hidden="true">⌃</span>
                 </div>
               </div>
               <div class="send-wrap">
@@ -417,29 +414,6 @@
       </div>
     </dialog>
 
-    <dialog id="modelPicker" class="model-picker-dialog">
-      <div class="model-picker-header">
-        <div>
-          <strong id="modelPickerTitle">选择模型</strong>
-          <span id="modelPickerCount">0 个模型</span>
-        </div>
-        <button id="closeModelPicker" class="icon-button" type="button" title="关闭" aria-label="关闭">×</button>
-      </div>
-      <div class="model-picker-body">
-        <aside class="model-vendor-panel">
-          <div class="model-vendor-heading">模型分组</div>
-          <nav id="modelVendorList" class="model-vendor-list"></nav>
-        </aside>
-        <section class="model-results-panel">
-          <label class="model-search-wrap">
-            <span aria-hidden="true">⌕</span>
-            <input id="modelSearch" type="search" placeholder="搜索模型..." autocomplete="off" />
-          </label>
-          <div id="modelPickerList" class="model-picker-list"></div>
-        </section>
-      </div>
-    </dialog>
-
     <input id="importFile" type="file" accept="application/json" hidden />
     <input id="imageReferenceFiles" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden />
     <input id="videoReferenceFiles" type="file" accept="video/mp4,video/webm,video/quicktime" multiple hidden />
@@ -450,6 +424,6 @@
     <datalist id="modelOptions"></datalist>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-    <script src="./app.js?v=20261117-r3" defer></script>
+    <script src="./app.js?v=20261117-r4" defer></script>
   </body>
 </html>

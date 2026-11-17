@@ -378,8 +378,9 @@ let toastTimer = null;
 let deleteArmed = null;
 let draftMedia = createEmptyDraftMedia();
 let viewerZoom = 1;
-let modelPickerType = "chat";
-let activeModelVendor = "";
+let modelPopoverType = "chat";
+let modelPopoverOpen = false;
+let settingsCardCollapsed = false;
 let chatAttachments = [];
 let settingsFormSnapshot = "";
 let activeSettingsTab = "api";
@@ -412,15 +413,15 @@ function initElements() {
     "sessionList",
     "openSettingsSide",
     "mobileMenu",
-    "workspaceTitle",
-    "modelBadge",
     "closeSettings",
     "chatPanel",
     "imagePanel",
     "emptyChat",
     "messages",
     "composerTitle",
+    "composerTitleRow",
     "newSessionBtn",
+    "newChatSessionBtn",
     "visualPanelTitle",
     "visualPanelSubtitle",
     "visualRequestHint",
@@ -475,6 +476,8 @@ function initElements() {
     "quickModelButton",
     "quickModelVendor",
     "quickModelLabel",
+    "modelPopover",
+    "modelPopoverList",
     "stopButton",
     "sendButton",
     "overlay",
@@ -526,13 +529,6 @@ function initElements() {
     "viewerStage",
     "viewerImage",
     "viewerVideo",
-    "modelPicker",
-    "modelPickerTitle",
-    "modelPickerCount",
-    "closeModelPicker",
-    "modelVendorList",
-    "modelSearch",
-    "modelPickerList",
     "modelOptions",
     "toast",
   ].forEach((id) => {
@@ -1266,6 +1262,7 @@ function updateSession(session) {
 
 function bindEvents() {
   els.newSessionBtn.addEventListener("click", createWorkspaceSession);
+  els.newChatSessionBtn.addEventListener("click", createWorkspaceSession);
   els.collapseSidebar.addEventListener("click", () => {
     els.sidebar.classList.toggle("collapsed");
   });
@@ -1390,11 +1387,21 @@ function bindEvents() {
     renderOutputOptions();
     renderVisualMeta();
   });
-  els.quickModelButton.addEventListener("click", openModelPicker);
-  els.closeModelPicker.addEventListener("click", closeModelPicker);
-  els.modelSearch.addEventListener("input", renderModelPicker);
-  els.modelPicker.addEventListener("click", (event) => {
-    if (event.target === els.modelPicker) closeModelPicker();
+  els.quickModelButton.addEventListener("click", toggleModelPopover);
+  els.settingsSummaryBlock.addEventListener("click", toggleSettingsCardCollapsed);
+  els.settingsSummaryBlock.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      toggleSettingsCardCollapsed();
+    }
+  });
+  document.addEventListener("click", (event) => {
+    if (!modelPopoverOpen) return;
+    if (event.target.closest("#modelPopover") || event.target.closest("#quickModelButton")) return;
+    closeModelPopover();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeModelPopover();
   });
   els.stopButton.addEventListener("click", stopRequest);
   els.uploadImageRefButton.addEventListener("click", () => els.imageReferenceFiles.click());
@@ -1465,16 +1472,9 @@ function bindEvents() {
       return;
     }
 
-    const vendorButton = event.target.closest("[data-model-vendor]");
-    if (vendorButton) {
-      activeModelVendor = vendorButton.dataset.modelVendor;
-      renderModelPicker();
-      return;
-    }
-
-    const modelButton = event.target.closest("[data-model-id]");
-    if (modelButton) {
-      selectModelFromPicker(modelButton.dataset.modelId);
+    const popoverModelButton = event.target.closest("[data-popover-model-id]");
+    if (popoverModelButton) {
+      pickModelFromPopover(popoverModelButton.dataset.popoverModelId);
       return;
     }
   });
@@ -1530,8 +1530,6 @@ function renderHeader() {
       ? state.settings.videoModel
       : state.settings.imageModel
     : state.settings.chatModel;
-  els.workspaceTitle.textContent = "DeepImage2-Video";
-  els.modelBadge.textContent = model || "未选择模型";
   if (els.sidebarModelName) {
     els.sidebarModelName.textContent = model || "未选择模型";
     els.sidebarModelName.title = model || "";
@@ -1549,6 +1547,8 @@ function renderModes() {
   if (els.sessionBrowser && sessionMount && els.sessionBrowser.parentElement !== sessionMount) {
     sessionMount.appendChild(els.sessionBrowser);
   }
+  if (els.composerTitleRow) els.composerTitleRow.hidden = !isVisual;
+  closeModelPopover();
   if (els.composerTitle && !isVisual) els.composerTitle.textContent = "语言模型";
   els.promptInput.placeholder = isVisual
     ? visualMode === "video"
@@ -1635,8 +1635,14 @@ function renderControls() {
       : state.settings.imageModel
     : state.settings.chatModel;
   const selectedProfile = getModelProfile(selectedModel);
-  els.quickModelLabel.textContent = selectedModel || "未选择模型";
-  els.quickModelVendor.textContent = selectedProfile?.vendor || modelTypeLabel(activeMode === "image" ? state.settings.visualMode : "chat");
+  const displayName = selectedProfile?.label && selectedProfile.label !== selectedModel
+    ? selectedProfile.label
+    : selectedModel;
+  els.quickModelLabel.textContent = displayName || "未选择模型";
+  els.quickModelLabel.title = selectedModel || "";
+  const vendorName = selectedProfile?.vendor || "";
+  els.quickModelVendor.textContent = vendorName ? vendorName.charAt(0).toUpperCase() : "✦";
+  els.quickModelVendor.title = vendorName;
   if (!abortController) {
     els.sendButton.disabled = false;
     els.stopButton.hidden = !(isVisual && visualMode === "image" && activeImageRequests.size);
@@ -1698,7 +1704,7 @@ function renderOutputOptions() {
   const isVideo = state.settings.visualMode === "video";
   const usesPixelSize = usesPixelVideoSizeOptions(state.settings.videoModel);
   const grokImageSelected = isGrokImagineImageModel(state.settings.imageModel);
-  els.visualSettingsCard.hidden = activeMode !== "image";
+  applySettingsCardVisibility();
   els.imageOutputSettings.hidden = isVideo;
   els.videoOutputSettings.hidden = !isVideo;
   const isDallE3 = state.settings.imageModel === "dall-e-3";
@@ -1852,6 +1858,22 @@ function updateSettingsSummary() {
     }
     els.settingsSummaryText.textContent = parts.join(" · ");
   }
+}
+
+function applySettingsCardVisibility() {
+  if (els.visualSettingsCard) {
+    els.visualSettingsCard.hidden = activeMode !== "image" || settingsCardCollapsed;
+  }
+  if (els.settingsSummaryBlock) {
+    els.settingsSummaryBlock.classList.toggle("collapsed", settingsCardCollapsed);
+    els.settingsSummaryBlock.setAttribute("aria-expanded", String(!settingsCardCollapsed));
+  }
+}
+
+function toggleSettingsCardCollapsed() {
+  if (activeMode !== "image") return;
+  settingsCardCollapsed = !settingsCardCollapsed;
+  applySettingsCardVisibility();
 }
 
 function imageSizeOptionsForModel() {
@@ -5509,57 +5531,47 @@ function modelTypeLabel(type) {
   return "语言模型";
 }
 
-function openModelPicker() {
-  modelPickerType = activeMode === "image" ? state.settings.visualMode : "chat";
-  const current = currentModelForType(modelPickerType);
-  const records = selectableModelRecords(modelPickerType, current);
-  const currentRecord = records.find((item) => item.id === current);
-  activeModelVendor = currentRecord?.vendor || records[0]?.vendor || "";
-  els.modelSearch.value = "";
-  renderModelPicker();
-  if (typeof els.modelPicker.showModal === "function") els.modelPicker.showModal();
-  else els.modelPicker.setAttribute("open", "");
-  requestAnimationFrame(() => els.modelSearch.focus());
+function toggleModelPopover() {
+  if (modelPopoverOpen) closeModelPopover();
+  else openModelPopover();
 }
 
-function closeModelPicker() {
-  if (typeof els.modelPicker.close === "function") els.modelPicker.close();
-  else els.modelPicker.removeAttribute("open");
+function openModelPopover() {
+  modelPopoverType = activeMode === "image" ? state.settings.visualMode : "chat";
+  renderModelPopover();
+  modelPopoverOpen = true;
+  els.modelPopover.hidden = false;
+  els.quickModelButton.setAttribute("aria-expanded", "true");
 }
 
-function renderModelPicker() {
-  const current = currentModelForType(modelPickerType);
-  const records = selectableModelRecords(modelPickerType, current).filter((item) => !isHiddenModel(item.id));
-  const vendors = groupBy(records, (item) => item.vendor || "default");
-  if (!activeModelVendor || !vendors[activeModelVendor]) activeModelVendor = Object.keys(vendors)[0] || "";
-  const query = els.modelSearch.value.trim().toLowerCase();
-  const visible = (vendors[activeModelVendor] || []).filter((item) => {
-    if (!query) return true;
-    return `${item.id} ${item.label || ""}`.toLowerCase().includes(query);
-  });
-  els.modelPickerTitle.textContent = `选择${modelTypeLabel(modelPickerType)}模型`;
-  els.modelPickerCount.textContent = `${records.length} 个模型`;
-  els.modelVendorList.innerHTML = Object.entries(vendors)
-    .map(([vendor, items]) => `
-      <button class="model-vendor-button${vendor === activeModelVendor ? " active" : ""}" type="button" data-model-vendor="${escapeAttr(vendor)}">
-        <span>${escapeHtml(vendor)}</span>
-        <small>${items.length}</small>
-      </button>
-    `)
-    .join("");
-  els.modelPickerList.innerHTML = visible.length
-    ? visible
-        .map((model) => `
-          <button class="model-result-item${model.id === current ? " active" : ""}" type="button" data-model-id="${escapeAttr(model.id)}">
-            <span>
-              <strong>${escapeHtml(model.label || model.id)}</strong>
-              ${model.label && model.label !== model.id ? `<small>${escapeHtml(model.id)}</small>` : ""}
+function closeModelPopover() {
+  modelPopoverOpen = false;
+  if (els.modelPopover) els.modelPopover.hidden = true;
+  if (els.quickModelButton) els.quickModelButton.setAttribute("aria-expanded", "false");
+}
+
+function renderModelPopover() {
+  const current = currentModelForType(modelPopoverType);
+  const records = selectableModelRecords(modelPopoverType, current).filter((item) => !isHiddenModel(item.id));
+  els.modelPopoverList.innerHTML = records.length
+    ? records
+        .map((model) => {
+          const active = model.id === current;
+          const vendor = model.vendor || "";
+          const initial = vendor ? vendor.charAt(0).toUpperCase() : "✦";
+          const name = model.label && model.label !== model.id ? model.label : model.id;
+          return `
+          <button class="model-popover-item${active ? " active" : ""}" type="button" role="option" aria-selected="${active}" data-popover-model-id="${escapeAttr(model.id)}">
+            <span class="vendor-icon" aria-hidden="true">${escapeHtml(initial)}</span>
+            <span class="model-popover-text">
+              <strong>${escapeHtml(name)}</strong>
+              ${name !== model.id ? `<small>${escapeHtml(model.id)}</small>` : ""}
             </span>
-            <span class="model-result-check">${model.id === current ? "✓" : ""}</span>
-          </button>
-        `)
+            ${active ? '<span class="model-popover-check" aria-hidden="true">✓</span>' : ""}
+          </button>`;
+        })
         .join("")
-    : '<div class="model-picker-empty">当前分组没有匹配模型</div>';
+    : '<div class="model-popover-empty">没有可选模型</div>';
 }
 
 function currentModelForType(type) {
@@ -5568,20 +5580,24 @@ function currentModelForType(type) {
   return state.settings.chatModel;
 }
 
-function selectModelFromPicker(modelId) {
-  if (!modelId || isHiddenModel(modelId)) return;
-  if (modelPickerType === "video") {
+function applyModelSelection(type, modelId) {
+  if (type === "video") {
     state.settings.videoModel = modelId;
     normalizeDocumentedVeo31DraftForModel();
   }
-  else if (modelPickerType === "image") {
+  else if (type === "image") {
     state.settings.imageModel = modelId;
     state.settings.imageQuality = normalizeImageQualityForModel(modelId, state.settings.imageQuality);
   }
   else state.settings.chatModel = modelId;
   state.modelOptions = unique([modelId, ...state.modelOptions.filter((id) => !isHiddenModel(id))]);
   saveState();
-  closeModelPicker();
+}
+
+function pickModelFromPopover(modelId) {
+  if (!modelId || isHiddenModel(modelId)) return;
+  applyModelSelection(modelPopoverType, modelId);
+  closeModelPopover();
   render();
 }
 
