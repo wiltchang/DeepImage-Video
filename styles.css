@@ -5129,3 +5129,146 @@ summary:active,
   font-weight: 750;
   line-height: 1;
 }
+
+/* ==========================================================================
+   Round 5 overlay (appended): mobile (<=900px) visual workspace is rebuilt
+   as a single natural-height column with page-level scrolling, so the
+   prompt input can never be trapped inside a capped, internally scrolling
+   composer card again (the desktop "card scrolls inside 100dvh" model is
+   what hid #promptInput behind the reference tray + slot chips on phones:
+   .composer-card max-height:54dvh + .composer-main overflow-y:auto +
+   #promptInput flex:1 1 auto squeezed it out of the visible slice, and
+   iOS shows no scrollbar hint). Everything below is scoped to
+   .workspace.visual-workspace inside the <=900px query, so desktop
+   (>900px) and chat mode keep the round 3/4 behaviour untouched.
+   ========================================================================== */
+@media (max-width: 900px) {
+  /* Page-level scrolling, visual mode only: release the 100dvh shell.
+     The :has() gate keys off the class app.js toggles on #workspace, so
+     chat mode keeps its fixed shell + internal message scroll. */
+  html:has(.workspace.visual-workspace),
+  body:has(.workspace.visual-workspace) {
+    height: auto;
+    overflow: visible;
+  }
+
+  body:has(.workspace.visual-workspace) .app-shell {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  /* Single column, natural height (DOM order is panel-then-composer, so
+     flex order restores composer -> preview -> queue stacking). */
+  .workspace.visual-workspace {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    overflow: visible;
+  }
+
+  .workspace.visual-workspace .composer {
+    order: 1;
+    position: static;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    width: auto;
+    height: auto;
+    min-height: 0;
+    padding: 0 12px;
+  }
+
+  .workspace.visual-workspace #imagePanel {
+    order: 2;
+    flex: 0 0 auto;
+    height: auto;
+    min-height: 0;
+    padding: 14px 12px 16px;
+    overflow: visible;
+  }
+
+  /* Composer card: full content height, never capped, never scrolls.
+     padding restated at the round-4 mobile value so the legacy <=560px
+     .composer-card{padding:8px} rule can never reach the visual card. */
+  .workspace.visual-workspace .composer-card {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+    padding: 16px;
+  }
+
+  .workspace.visual-workspace .composer-main {
+    flex: none;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  /* Prompt input: fixed, always-visible block (desktop keeps flex sizing;
+     the JS auto-resize may still grow it up to its clamp, and the 88px
+     min-height floors any inline height it writes). */
+  .workspace.visual-workspace #promptInput {
+    flex: 0 0 auto;
+    height: 88px;
+    min-height: 88px;
+  }
+
+  /* Preview shell: one natural-height column. padding-bottom:0 kills the
+     legacy fixed-composer clearances (236px in the <=900px layer, 190px /
+     176px in the base layers) that no longer have a fixed bar to clear. */
+  .workspace.visual-workspace .visual-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    height: auto;
+    padding-bottom: 0;
+  }
+
+  .workspace.visual-workspace .visual-main {
+    flex: 0 0 auto;
+    min-height: 0;
+  }
+
+  .workspace.visual-workspace .visual-canvas {
+    min-height: 300px;
+  }
+
+  .workspace.visual-workspace .visual-inspector {
+    flex: 0 0 auto;
+    min-height: 0;
+  }
+
+  .workspace.visual-workspace .visual-inspector .queue-panel {
+    flex: 0 0 auto;
+  }
+
+  .workspace.visual-workspace .history-list {
+    flex: 0 0 auto;
+    overflow: visible;
+  }
+
+  /* Preview head: pinned to a single row — title left, clear action on
+     the same line at the right, no wrap, no centring rule may win. */
+  .workspace.visual-workspace .visual-head {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .workspace.visual-workspace .visual-head h2 {
+    text-align: left;
+  }
+
+  .workspace.visual-workspace .visual-head-actions {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+  }
+
+  /* The drawer button must stay reachable while the page scrolls. */
+  .workspace.visual-workspace .mobile-menu-button {
+    position: fixed;
+  }
+}
