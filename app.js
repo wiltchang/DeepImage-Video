@@ -376,7 +376,6 @@ let abortController = null;
 const activeImageRequests = new Map();
 let toastTimer = null;
 let deleteArmed = null;
-let outputPopoverOpen = false;
 let draftMedia = createEmptyDraftMedia();
 let viewerZoom = 1;
 let modelPickerType = "chat";
@@ -406,25 +405,22 @@ function initElements() {
     "sidebarModelSettings",
     "sidebarModelName",
     "collapseSidebar",
-    "newSession",
-    "chatMode",
-    "imageMode",
+    "sessionBrowser",
+    "sessionMountChat",
+    "sessionMountInspector",
     "sessionSearch",
     "sessionList",
     "openSettingsSide",
     "mobileMenu",
     "workspaceTitle",
     "modelBadge",
-    "openHistory",
-    "testModels",
-    "openSettings",
     "closeSettings",
     "chatPanel",
     "imagePanel",
     "emptyChat",
     "messages",
-    "visualImageTab",
-    "visualVideoTab",
+    "composerTitle",
+    "newSessionBtn",
     "visualPanelTitle",
     "visualPanelSubtitle",
     "visualRequestHint",
@@ -433,8 +429,6 @@ function initElements() {
     "imageEmpty",
     "imageGrid",
     "clearImages",
-    "openModelSettings",
-    "modelSummary",
     "taskCount",
     "imageHistory",
     "composer",
@@ -448,7 +442,7 @@ function initElements() {
     "visualToolbar",
     "visualContextToggle",
     "draftMediaTray",
-    "outputSettingsPopover",
+    "visualSettingsCard",
     "imageOutputSettings",
     "videoOutputSettings",
     "imageAspectGroup",
@@ -457,21 +451,23 @@ function initElements() {
     "imageStyleGroup",
     "imageBackgroundGroup",
     "imageFormatGroup",
-    "imageWatermarkToggle",
-    "imageSequentialToggle",
-    "imageCountInline",
+    "imageWatermarkGroup",
+    "imageSequentialGroup",
+    "imageCountGroup",
     "videoAspectGroup",
     "videoResolutionGroup",
     "videoDurationGroup",
     "videoCountGroup",
     "videoStyleGroup",
-    "videoAudioToggle",
+    "videoAudioGroup",
+    "settingsSummaryBlock",
+    "settingsSummaryLabel",
+    "settingsSummaryText",
     "uploadImageRefButton",
     "uploadFirstFrameButton",
     "uploadLastFrameButton",
     "uploadVideoRefButton",
     "uploadAudioButton",
-    "openOutputSettings",
     "promptInput",
     "streamToggle",
     "thinkingToggle",
@@ -1269,17 +1265,12 @@ function updateSession(session) {
 }
 
 function bindEvents() {
-  els.newSession.addEventListener("click", createWorkspaceSession);
+  els.newSessionBtn.addEventListener("click", createWorkspaceSession);
   els.collapseSidebar.addEventListener("click", () => {
     els.sidebar.classList.toggle("collapsed");
   });
   els.mobileMenu.addEventListener("click", openMobileSidebar);
-  els.openHistory.addEventListener("click", openMobileSidebar);
   els.overlay.addEventListener("click", closeMobileSidebar);
-  els.chatMode.addEventListener("click", () => setMode("chat"));
-  els.imageMode.addEventListener("click", () => setMode("image"));
-  els.visualImageTab.addEventListener("click", () => setVisualMode("image"));
-  els.visualVideoTab.addEventListener("click", () => setVisualMode("video"));
   els.menuImageMode.addEventListener("click", () => {
     setMode("image");
     if (state.settings.visualMode !== "image") setVisualMode("image");
@@ -1291,12 +1282,26 @@ function bindEvents() {
   els.menuChatMode.addEventListener("click", () => setMode("chat"));
   els.sidebarModelSettings.addEventListener("click", () => openSettings("models"));
   els.sessionSearch.addEventListener("input", renderSessions);
-  els.openSettings.addEventListener("click", () => openSettings("api"));
   els.openSettingsSide.addEventListener("click", () => openSettings("api"));
-  els.openModelSettings.addEventListener("click", () => openSettings("models"));
   els.closeSettings.addEventListener("click", closeSettings);
-  els.testModels.addEventListener("click", fetchModels);
   els.reloadModels.addEventListener("click", fetchModels);
+  document.addEventListener("input", (event) => {
+    const slider = event.target.closest?.("[data-duration-key]");
+    if (!slider) return;
+    const options = videoDurationOptionsForModel();
+    const option = options[Number(slider.value)];
+    if (!option) return;
+    state.settings.videoDuration = effectiveVideoDurationForValue(option.value);
+    saveState();
+    const badge = slider.closest(".duration-control")?.querySelector(".duration-value");
+    if (badge) badge.textContent = option.label;
+    updateSettingsSummary();
+    renderVisualMeta();
+  });
+  document.addEventListener("change", (event) => {
+    if (!event.target.closest?.("[data-duration-key]")) return;
+    renderOutputOptions();
+  });
   els.testConnection.addEventListener("click", testConnection);
   els.saveSettings.addEventListener("click", () => saveSettingsFromForm());
   els.toggleApiKey.addEventListener("click", toggleApiKeyVisibility);
@@ -1381,6 +1386,8 @@ function bindEvents() {
     saveState();
     syncSettingsForm();
     renderHeader();
+    renderControls();
+    renderOutputOptions();
     renderVisualMeta();
   });
   els.quickModelButton.addEventListener("click", openModelPicker);
@@ -1390,27 +1397,6 @@ function bindEvents() {
     if (event.target === els.modelPicker) closeModelPicker();
   });
   els.stopButton.addEventListener("click", stopRequest);
-  els.openOutputSettings.addEventListener("click", toggleOutputPopover);
-  els.imageCountInline.addEventListener("change", () => {
-    state.settings.imageCount = clampNumber(els.imageCountInline.value, 1, 4, 1);
-    saveState();
-    renderOutputOptions();
-  });
-  els.videoAudioToggle.addEventListener("change", () => {
-    state.settings.videoAudio = els.videoAudioToggle.checked;
-    saveState();
-    renderOutputOptions();
-  });
-  els.imageWatermarkToggle.addEventListener("change", () => {
-    state.settings.imageWatermark = els.imageWatermarkToggle.checked;
-    saveState();
-    renderOutputOptions();
-  });
-  els.imageSequentialToggle.addEventListener("change", () => {
-    state.settings.imageSequential = els.imageSequentialToggle.checked;
-    saveState();
-    renderOutputOptions();
-  });
   els.uploadImageRefButton.addEventListener("click", () => els.imageReferenceFiles.click());
   els.uploadFirstFrameButton.addEventListener("click", () => els.firstFrameFile.click());
   els.uploadLastFrameButton.addEventListener("click", () => els.lastFrameFile.click());
@@ -1435,12 +1421,6 @@ function bindEvents() {
   });
 
   document.addEventListener("click", (event) => {
-    const visualModeButton = event.target.closest("[data-visual-mode]");
-    if (visualModeButton) {
-      setVisualMode(visualModeButton.dataset.visualMode);
-      return;
-    }
-
     const optionButton = event.target.closest("[data-setting-key]");
     if (optionButton) {
       setVisualOption(optionButton.dataset.settingKey, optionButton.dataset.value);
@@ -1497,16 +1477,6 @@ function bindEvents() {
       selectModelFromPicker(modelButton.dataset.modelId);
       return;
     }
-
-    if (
-      outputPopoverOpen &&
-      !els.outputSettingsPopover.contains(event.target) &&
-      event.target !== els.openOutputSettings &&
-      !els.openOutputSettings.contains(event.target)
-    ) {
-      outputPopoverOpen = false;
-      renderOutputOptions();
-    }
   });
 }
 
@@ -1523,7 +1493,6 @@ function closeMobileSidebar() {
 function setMode(mode) {
   activeMode = mode;
   if (mode === "image") {
-    outputPopoverOpen = false;
     getActiveVisualSession();
   }
   saveState();
@@ -1533,7 +1502,6 @@ function setMode(mode) {
 function setVisualMode(mode) {
   state.settings.visualMode = mode === "video" ? "video" : "image";
   activeMode = "image";
-  outputPopoverOpen = false;
   const session = getActiveVisualSession();
   if (session) session.lastVisualMode = state.settings.visualMode;
   saveState();
@@ -1575,17 +1543,13 @@ function renderModes() {
   const isVisual = activeMode === "image";
   const visualMode = state.settings.visualMode;
   if (els.workspace) els.workspace.classList.toggle("visual-workspace", isVisual);
-  els.chatMode.classList.toggle("active", !isVisual);
-  els.chatMode.setAttribute("aria-selected", String(!isVisual));
-  els.imageMode.classList.toggle("active", isVisual);
-  els.imageMode.setAttribute("aria-selected", String(isVisual));
-  els.newSession.textContent = isVisual ? "新建视觉会话" : "新建会话";
   els.chatPanel.classList.toggle("active", !isVisual);
   els.imagePanel.classList.toggle("active", isVisual);
-  els.visualImageTab.classList.toggle("active", visualMode === "image");
-  els.visualImageTab.setAttribute("aria-selected", String(visualMode === "image"));
-  els.visualVideoTab.classList.toggle("active", visualMode === "video");
-  els.visualVideoTab.setAttribute("aria-selected", String(visualMode === "video"));
+  const sessionMount = isVisual ? els.sessionMountInspector : els.sessionMountChat;
+  if (els.sessionBrowser && sessionMount && els.sessionBrowser.parentElement !== sessionMount) {
+    sessionMount.appendChild(els.sessionBrowser);
+  }
+  if (els.composerTitle && !isVisual) els.composerTitle.textContent = "语言模型";
   els.promptInput.placeholder = isVisual
     ? visualMode === "video"
       ? "描述要生成的视频镜头、主体、运动和氛围"
@@ -1673,14 +1637,11 @@ function renderControls() {
   const selectedProfile = getModelProfile(selectedModel);
   els.quickModelLabel.textContent = selectedModel || "未选择模型";
   els.quickModelVendor.textContent = selectedProfile?.vendor || modelTypeLabel(activeMode === "image" ? state.settings.visualMode : "chat");
-  document.querySelectorAll("[data-visual-mode]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.visualMode === visualMode);
-  });
   if (!abortController) {
     els.sendButton.disabled = false;
     els.stopButton.hidden = !(isVisual && visualMode === "image" && activeImageRequests.size);
     els.stopButton.title = activeImageRequests.size ? `停止 ${activeImageRequests.size} 个图片任务` : "停止";
-    els.sendButton.textContent = isVisual ? (visualMode === "video" ? "生成视频" : "生成图片") : "发送";
+    els.sendButton.textContent = isVisual ? (visualMode === "video" ? "立即生成视频" : "立即生成图片") : "发送";
   }
 }
 
@@ -1700,23 +1661,47 @@ function fillQuickModelSelect() {
   els.quickModel.value = current || "";
 }
 
+const BOOL_SETTING_OPTIONS = [
+  { value: "true", label: "开启" },
+  { value: "false", label: "关闭" },
+];
+
+const VIDEO_AUDIO_OPTIONS = [
+  { value: "true", label: "含音频" },
+  { value: "false", label: "静音" },
+];
+
+const COUNT_SETTING_OPTIONS = Array.from({ length: 4 }, (_, index) => ({
+  value: String(index + 1),
+  label: String(index + 1),
+}));
+
+// Canonical tier names for size/resolution档位 (BoostMax style: 标清/高清/超清).
+const SIZE_TIER_NAMES = {
+  "0.5k": "标清",
+  "480p": "标清",
+  "1k": "标清",
+  "720p": "高清",
+  "2k": "高清",
+  "1080p": "超清",
+  "4k": "超清",
+};
+
+function tierNameForOption(option) {
+  const byValue = SIZE_TIER_NAMES[String(option.value || "").toLowerCase()];
+  if (byValue) return byValue;
+  const byLabel = SIZE_TIER_NAMES[String(option.label || "").toLowerCase()];
+  return byLabel || "";
+}
+
 function renderOutputOptions() {
   const isVideo = state.settings.visualMode === "video";
   const usesPixelSize = usesPixelVideoSizeOptions(state.settings.videoModel);
   const grokImageSelected = isGrokImagineImageModel(state.settings.imageModel);
-  els.outputSettingsPopover.hidden = !outputPopoverOpen || activeMode !== "image";
-  els.openOutputSettings.setAttribute("aria-expanded", String(outputPopoverOpen));
+  els.visualSettingsCard.hidden = activeMode !== "image";
   els.imageOutputSettings.hidden = isVideo;
   els.videoOutputSettings.hidden = !isVideo;
   const isDallE3 = state.settings.imageModel === "dall-e-3";
-  els.imageCountInline.value = isDallE3 ? 1 : state.settings.imageCount;
-  els.imageCountInline.disabled = isDallE3;
-  els.imageCountInline.title = isDallE3 ? "DALL-E 3 每次仅生成 1 张" : "";
-  els.videoAudioToggle.checked = effectiveVideoAudio();
-  els.videoAudioToggle.disabled = isVeoModel(state.settings.videoModel);
-  els.videoAudioToggle.title = isVeo2Model(state.settings.videoModel)
-    ? "Veo 2 仅生成静音视频"
-    : isVeoModel(state.settings.videoModel) ? "Veo 3 系列始终生成音频" : "";
 
   const imageSizeRow = els.imageSizeGroup.closest(".setting-row");
   const imageStyleRow = els.imageStyleGroup.closest(".setting-row");
@@ -1730,14 +1715,12 @@ function renderOutputOptions() {
   const imageFormatRow = els.imageFormatGroup?.closest(".setting-row");
   if (imageBackgroundRow) imageBackgroundRow.hidden = !gptImageSelected;
   if (imageFormatRow) imageFormatRow.hidden = !gptImageSelected;
-  const imageWatermarkRow = els.imageWatermarkToggle?.closest(".toggle-row");
-  const imageSequentialRow = els.imageSequentialToggle?.closest(".toggle-row");
+  const imageWatermarkRow = els.imageWatermarkGroup?.closest(".setting-row");
+  const imageSequentialRow = els.imageSequentialGroup?.closest(".setting-row");
   if (imageWatermarkRow) imageWatermarkRow.hidden = !seedreamSelected;
   if (imageSequentialRow) imageSequentialRow.hidden = !seedreamSelected;
-  if (els.imageWatermarkToggle) els.imageWatermarkToggle.checked = !!state.settings.imageWatermark;
-  if (els.imageSequentialToggle) els.imageSequentialToggle.checked = !!state.settings.imageSequential;
-  renderOptionGroup(els.imageAspectGroup, "imageAspectRatio", imageAspectOptionsForModel(), effectiveImageAspectRatio());
-  renderOptionGroup(els.imageSizeGroup, "imageSize", imageSizeOptionsForModel(), effectiveImageOutputSize());
+  renderTileGroup(els.imageAspectGroup, "imageAspectRatio", imageAspectOptionsForModel(), effectiveImageAspectRatio());
+  renderOptionGroup(els.imageSizeGroup, "imageSize", imageSizeOptionsForModel(), effectiveImageOutputSize(), { tiered: true });
   renderOptionGroup(
     els.imageQualityGroup,
     "imageQuality",
@@ -1751,58 +1734,124 @@ function renderOutputOptions() {
   if (els.imageFormatGroup) {
     renderOptionGroup(els.imageFormatGroup, "imageOutputFormat", GPT_IMAGE_FORMAT_OPTIONS, gptImageOutputFormatValue());
   }
-  renderOptionGroup(els.videoAspectGroup, "videoAspectRatio", videoAspectOptionsForModel(), effectiveVideoAspectRatio());
+  renderOptionGroup(els.imageWatermarkGroup, "imageWatermark", BOOL_SETTING_OPTIONS, String(!!state.settings.imageWatermark));
+  renderOptionGroup(els.imageSequentialGroup, "imageSequential", BOOL_SETTING_OPTIONS, String(!!state.settings.imageSequential));
+  renderOptionGroup(els.imageCountGroup, "imageCount", COUNT_SETTING_OPTIONS, String(isDallE3 ? 1 : state.settings.imageCount), {
+    disabled: isDallE3,
+  });
+  els.imageCountGroup.title = isDallE3 ? "DALL-E 3 每次仅生成 1 张" : "";
+  renderTileGroup(els.videoAspectGroup, "videoAspectRatio", videoAspectOptionsForModel(), effectiveVideoAspectRatio());
   const videoAspectRow = els.videoAspectGroup.closest(".setting-row");
   const videoResolutionRow = els.videoResolutionGroup.closest(".setting-row");
   const videoCountRow = els.videoCountGroup.closest(".setting-row");
   const videoStyleRow = els.videoStyleGroup.closest(".setting-row");
-  const videoAudioRow = els.videoAudioToggle.closest(".toggle-row");
+  const videoAudioRow = els.videoAudioGroup.closest(".setting-row");
   const usesOfficialGrokRequest = isGrokVideoModel(state.settings.videoModel);
   const videoAspectLabel = videoAspectRow?.querySelector(":scope > span");
-  if (videoAspectLabel) videoAspectLabel.textContent = usesPixelSize ? "尺寸" : "比例";
+  if (videoAspectLabel) videoAspectLabel.textContent = usesPixelSize ? "尺寸" : "视频比例";
   if (videoResolutionRow) videoResolutionRow.hidden = usesPixelSize;
   if (videoCountRow) videoCountRow.hidden = !isSeedanceModel(state.settings.videoModel);
   const documentedVeo31 = isDocumentedVeo31Model(state.settings.videoModel);
   if (videoStyleRow) videoStyleRow.hidden = false;
   if (videoAudioRow) videoAudioRow.hidden = usesOfficialGrokRequest || documentedVeo31;
-  renderOptionGroup(els.videoResolutionGroup, "videoResolution", videoResolutionOptionsForModel(), effectiveVideoResolution());
-  renderStepperOptionGroup(
-    els.videoDurationGroup,
-    "videoDuration",
-    videoDurationOptionsForModel(),
-    String(effectiveVideoDuration())
-  );
-  renderOptionGroup(
-    els.videoCountGroup,
-    "videoCount",
-    Array.from({ length: 4 }, (_, index) => ({ value: String(index + 1), label: String(index + 1) })),
-    String(effectiveVideoCount())
-  );
+  renderOptionGroup(els.videoResolutionGroup, "videoResolution", videoResolutionOptionsForModel(), effectiveVideoResolution(), { tiered: true });
+  renderDurationSlider(els.videoDurationGroup, "videoDuration", videoDurationOptionsForModel(), String(effectiveVideoDuration()));
+  renderOptionGroup(els.videoCountGroup, "videoCount", COUNT_SETTING_OPTIONS, String(effectiveVideoCount()));
   renderOptionGroup(els.videoStyleGroup, "videoStyle", VIDEO_STYLE_OPTIONS, state.settings.videoStyle);
+  renderOptionGroup(els.videoAudioGroup, "videoAudio", VIDEO_AUDIO_OPTIONS, String(effectiveVideoAudio()), {
+    disabled: isVeoModel(state.settings.videoModel),
+  });
+  els.videoAudioGroup.title = isVeo2Model(state.settings.videoModel)
+    ? "Veo 2 仅生成静音视频"
+    : isVeoModel(state.settings.videoModel) ? "Veo 3 系列始终生成音频" : "";
+  updateSettingsSummary();
 }
 
-function renderOptionGroup(container, key, options, currentValue) {
+function renderOptionGroup(container, key, options, currentValue, config = {}) {
   container.innerHTML = options
     .map((option) => {
       const active = String(option.value) === String(currentValue) ? " active" : "";
-      return `<button class="option-button${active}" type="button" data-setting-key="${escapeAttr(key)}" data-value="${escapeAttr(option.value)}">${escapeHtml(option.label)}</button>`;
+      const tier = config.tiered ? tierNameForOption(option) : "";
+      const tierHtml = tier ? `<span class="pill-tier">${escapeHtml(tier)}</span>` : "";
+      const disabled = config.disabled ? " disabled" : "";
+      return `<button class="option-button pill-option${active}" type="button" data-setting-key="${escapeAttr(key)}" data-value="${escapeAttr(option.value)}"${disabled}>${tierHtml}<span class="pill-label">${escapeHtml(option.label)}</span><span class="option-check" aria-hidden="true">✓</span></button>`;
     })
     .join("");
 }
 
-function renderStepperOptionGroup(container, key, options, currentValue) {
+function ratioGlyphForValue(value) {
+  const text = String(value || "");
+  let width = 0;
+  let height = 0;
+  const colon = text.match(/^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/);
+  const pixels = text.match(/^(\d+)x(\d+)$/);
+  if (colon) {
+    width = Number(colon[1]);
+    height = Number(colon[2]);
+  } else if (pixels) {
+    width = Number(pixels[1]);
+    height = Number(pixels[2]);
+  }
+  if (!width || !height) {
+    return `<span class="ratio-glyph"><i class="ratio-glyph-box is-adaptive" style="width:20px;height:20px"></i></span>`;
+  }
+  const scale = 22 / Math.max(width, height);
+  const boxWidth = Math.max(5, Math.round(width * scale));
+  const boxHeight = Math.max(5, Math.round(height * scale));
+  return `<span class="ratio-glyph"><i class="ratio-glyph-box" style="width:${boxWidth}px;height:${boxHeight}px"></i></span>`;
+}
+
+function renderTileGroup(container, key, options, currentValue) {
+  container.innerHTML = options
+    .map((option) => {
+      const active = String(option.value) === String(currentValue) ? " active" : "";
+      return `<button class="ratio-tile${active}" type="button" data-setting-key="${escapeAttr(key)}" data-value="${escapeAttr(option.value)}">${ratioGlyphForValue(option.value)}<span class="ratio-label">${escapeHtml(option.label)}</span><span class="option-check" aria-hidden="true">✓</span></button>`;
+    })
+    .join("");
+}
+
+function renderDurationSlider(container, key, options, currentValue) {
   const currentIndex = Math.max(0, options.findIndex((option) => String(option.value) === String(currentValue)));
   const current = options[currentIndex] || { value: currentValue, label: currentValue };
-  const previous = options[currentIndex - 1];
-  const next = options[currentIndex + 1];
-  container.classList.add("option-stepper");
+  const first = options[0] || current;
   container.innerHTML = `
-    <button class="stepper-button" type="button" aria-label="上一个时长" title="上一个时长"
-      ${previous ? `data-setting-key="${escapeAttr(key)}" data-value="${escapeAttr(previous.value)}"` : "disabled"}>&#8592;</button>
-    <output class="stepper-value">${escapeHtml(current.label)}</output>
-    <button class="stepper-button" type="button" aria-label="下一个时长" title="下一个时长"
-      ${next ? `data-setting-key="${escapeAttr(key)}" data-value="${escapeAttr(next.value)}"` : "disabled"}>&#8594;</button>
+    <span class="duration-min">${escapeHtml(first.label)}</span>
+    <input class="duration-slider" type="range" min="0" max="${Math.max(0, options.length - 1)}" step="1" value="${currentIndex}"
+      data-duration-key="${escapeAttr(key)}" aria-label="时长" ${options.length <= 1 ? "disabled" : ""} />
+    <span class="duration-value">${escapeHtml(current.label)}</span>
   `;
+}
+
+function optionLabelForValue(options, value) {
+  const found = options.find((option) => String(option.value) === String(value));
+  return found ? found.label : String(value);
+}
+
+function updateSettingsSummary() {
+  if (!els.settingsSummaryBlock) return;
+  const isVisual = activeMode === "image";
+  els.settingsSummaryBlock.hidden = !isVisual;
+  if (!isVisual) return;
+  const isVideo = state.settings.visualMode === "video";
+  els.settingsSummaryLabel.textContent = isVideo ? "视频设置" : "图片设置";
+  if (isVideo) {
+    const duration = effectiveVideoDuration();
+    const parts = [
+      optionLabelForValue(videoAspectOptionsForModel(), effectiveVideoAspectRatio()),
+      optionLabelForValue(videoResolutionOptionsForModel(), effectiveVideoResolution()),
+      duration === -1 ? "自动" : `${duration}s`,
+    ];
+    els.settingsSummaryText.textContent = parts.join(" · ");
+  } else {
+    const parts = [
+      optionLabelForValue(imageAspectOptionsForModel(), effectiveImageAspectRatio()),
+      optionLabelForValue(imageSizeOptionsForModel(), effectiveImageOutputSize()),
+    ];
+    if (isGptImageModel(state.settings.imageModel)) {
+      parts.push(gptImageOutputFormatValue().toUpperCase());
+    }
+    els.settingsSummaryText.textContent = parts.join(" · ");
+  }
 }
 
 function imageSizeOptionsForModel() {
@@ -2308,7 +2357,8 @@ function imageStyleOptionsForModel() {
 function setVisualOption(key, value) {
   if (!Object.prototype.hasOwnProperty.call(DEFAULT_SETTINGS, key)) return;
   if (key === "videoDuration") state.settings[key] = effectiveVideoDurationForValue(value);
-  else if (key === "videoCount") state.settings[key] = clampNumber(value, 1, 4, 1);
+  else if (key === "videoCount" || key === "imageCount") state.settings[key] = clampNumber(value, 1, 4, 1);
+  else if (key === "videoAudio" || key === "imageWatermark" || key === "imageSequential") state.settings[key] = value === "true";
   else if (key === "imageQuality") state.settings[key] = normalizeImageQualityForModel(state.settings.imageModel, value);
   else state.settings[key] = value;
   saveState();
@@ -2325,11 +2375,6 @@ function effectiveVideoDurationForValue(value) {
   if (isGrokVideoModel(modelId)) return normalizeGrokVideoDuration(value, modelId);
   if (isVeoModel(modelId)) return normalizeVeoDuration(value, modelId);
   return clampNumber(value, 1, 30, 5);
-}
-
-function toggleOutputPopover() {
-  outputPopoverOpen = !outputPopoverOpen;
-  renderOutputOptions();
 }
 
 function renderSessions() {
@@ -5124,39 +5169,9 @@ function renderVisualMeta() {
       ? `适配 SeedDance、Grok、Veo 等视频模型；${isVisualContextEnabled() ? "当前会话已启用上下文。" : "当前会话未启用上下文。"}`
       : `支持文生图、图生图和参考图；${isVisualContextEnabled() ? "当前会话已启用上下文。" : "当前会话未启用上下文。"}`;
   els.visualRequestHint.textContent = visualMode === "video" ? videoModeLabel(profile) : imageModeLabel(profile);
-  els.modelSummary.innerHTML = renderModelSummary(profile, modelId, visualMode);
-}
-
-function renderModelSummary(profile, modelId, visualMode) {
-  const params =
-    visualMode === "video"
-      ? [
-          ["比例", effectiveVideoAspectRatio(modelId)],
-          ["清晰度", effectiveVideoResolution(modelId)],
-          ["时长", effectiveVideoDuration(modelId) === -1 ? "自动" : `${effectiveVideoDuration(modelId)}s`],
-          ...(isSeedanceModel(modelId) ? [["数量", effectiveVideoCount(modelId)]] : []),
-          ["风格", state.settings.videoStyle],
-          ["音频", effectiveVideoAudio(modelId) ? "开" : "关"],
-        ]
-      : [
-          ["模式", imageGenerationModeForReferences() === "image-to-image" ? "图生图" : "文生图"],
-          ["比例", effectiveImageAspectRatio(modelId)],
-          ["尺寸", effectiveImageOutputSize(modelId)],
-          ["质量", state.settings.imageQuality],
-          ["风格", state.settings.imageStyle],
-        ];
-  params.push(["上下文", isVisualContextEnabled() ? `最近 ${state.settings.visualContextTurns} 次` : "关闭"]);
-  return `
-    <div class="model-name">${escapeHtml(profile?.label || modelId || "未选择模型")}</div>
-    <div class="model-provider">${escapeHtml(profile?.vendor || "自定义模型")} · ${visualMode === "video" ? "视频" : "图片"}</div>
-    <div class="capability-row">${(profile?.capabilities || ["自定义"]).map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>
-    <details class="model-advanced">
-      <summary>高级参数</summary>
-      <div class="model-param-list">
-        ${params.map(([key, value]) => `<div><span>${escapeHtml(key)}</span><strong>${escapeHtml(value)}</strong></div>`).join("")}
-      </div>
-    </details>
-  `;
+  if (els.composerTitle && activeMode === "image") {
+    els.composerTitle.textContent = visualMode === "video" ? "视频生成" : "图片生成";
+  }
 }
 
 async function handleReferenceFiles(event, kind) {
@@ -5347,7 +5362,7 @@ function setLoading(loading) {
   const imageRequestsVisible = activeMode === "image" && state.settings.visualMode === "image" && activeImageRequests.size > 0;
   els.stopButton.hidden = !loading && !imageRequestsVisible;
   els.stopButton.title = imageRequestsVisible ? `停止 ${activeImageRequests.size} 个图片任务` : "停止";
-  els.sendButton.textContent = loading ? "发送中" : activeMode === "image" ? (state.settings.visualMode === "video" ? "生成视频" : "生成图片") : "发送";
+  els.sendButton.textContent = loading ? "发送中" : activeMode === "image" ? (state.settings.visualMode === "video" ? "立即生成视频" : "立即生成图片") : "发送";
 }
 
 function syncImageRequestControls() {
@@ -5619,7 +5634,7 @@ async function fetchModels() {
   const draft = formOpen ? settingsFormValues() : null;
   const connection = settingsConnectionValues();
   if (!validateSettingsConnection(connection)) return;
-  const trigger = formOpen ? els.reloadModels : els.testModels;
+  const trigger = formOpen ? els.reloadModels : null;
   setSettingsActionLoading(trigger, true, "获取中");
   setConnection("测试中", "", "正在通过 /v1/models 获取模型列表...");
   try {

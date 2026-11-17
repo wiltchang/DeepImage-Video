@@ -3945,18 +3945,6 @@ summary:active,
   border-radius: 20px;
 }
 
-.workspace.visual-workspace .output-popover {
-  position: static;
-  max-height: none;
-  margin-top: 10px;
-  padding: 12px 0 0;
-  overflow: visible;
-  border: 0;
-  border-top: 1px solid var(--border);
-  border-radius: 0;
-  box-shadow: none;
-}
-
 .workspace.visual-workspace .send-button {
   color: #ffffff;
   background: linear-gradient(135deg, #2563eb, #7c3aed);
@@ -4094,5 +4082,481 @@ summary:active,
     grid-column: 1;
     grid-row: 3;
     padding: 0 12px 12px;
+  }
+}
+
+/* ==========================================================================
+   Settings-card overlay (appended): BoostMax-style inline settings card in
+   the composer, summary row, session browser mounts (sidebar <-> right
+   inspector), and the deduplicated control surface.
+   ========================================================================== */
+
+/* ---------- Composer title row + new-session pill ---------- */
+.composer-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 2px 10px;
+}
+
+.composer-title-row h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.new-session-pill {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-main);
+  background: var(--bg-panel-soft);
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.new-session-pill:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+}
+
+/* ---------- Inline settings card ---------- */
+.settings-card {
+  margin-top: 10px;
+  padding: 2px 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg-panel);
+}
+
+.settings-card .output-settings {
+  display: block;
+}
+
+.settings-card .setting-row {
+  display: block;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-card .output-settings > .setting-row:last-child {
+  border-bottom: 0;
+}
+
+.settings-card .setting-row > span {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Ratio tiles */
+.tile-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ratio-tile {
+  position: relative;
+  width: 58px;
+  padding: 9px 4px 7px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text-muted);
+  background: var(--bg-panel-soft);
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.ratio-tile:hover {
+  border-color: var(--border-strong);
+  color: var(--text-main);
+}
+
+.ratio-tile.active {
+  border-color: var(--text-main);
+  color: var(--text-main);
+  background: var(--bg-panel);
+}
+
+.ratio-glyph {
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ratio-glyph-box {
+  display: block;
+  border: 1.5px solid currentColor;
+  border-radius: 3px;
+}
+
+.ratio-glyph-box.is-adaptive {
+  border-style: dashed;
+}
+
+.ratio-label {
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* Check badge shared by tiles and pills */
+.option-check {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #ffffff;
+  background: #111214;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.ratio-tile.active .option-check,
+.pill-option.active .option-check {
+  display: inline-flex;
+}
+
+/* Pills */
+.pill-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pill-option {
+  position: relative;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: var(--bg-panel-soft);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.pill-option:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text-main);
+}
+
+.pill-option.active {
+  border-color: var(--text-main);
+  color: var(--text-main);
+  background: var(--bg-panel);
+  box-shadow: none;
+}
+
+.pill-option:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pill-tier {
+  color: var(--text-soft);
+  font-weight: 600;
+}
+
+.pill-option.active .pill-tier {
+  color: var(--text-muted);
+}
+
+.pill-label {
+  font-weight: 700;
+}
+
+/* Duration slider */
+.duration-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.duration-min {
+  flex: 0 0 auto;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.duration-value {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border-radius: 999px;
+  color: var(--text-main);
+  background: var(--bg-panel-soft);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.duration-slider {
+  flex: 1;
+  min-width: 0;
+  height: 4px;
+  border-radius: 999px;
+  outline: none;
+  background: var(--border-strong);
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.duration-slider::-webkit-slider-thumb {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 50%;
+  background: #18181b;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.duration-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 50%;
+  background: #18181b;
+  cursor: pointer;
+}
+
+.duration-slider:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---------- Composer summary row ---------- */
+.composer-summary {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 10px;
+}
+
+.summary-block {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-panel-soft);
+}
+
+.summary-label {
+  flex: 0 0 auto;
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.summary-block .model-picker-trigger {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+  min-height: 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.summary-block .model-picker-trigger strong {
+  font-size: 13px;
+}
+
+.summary-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+/* Visual mode: summary takes its own row, send button full width below */
+.workspace.visual-workspace .composer-row {
+  flex-wrap: wrap;
+}
+
+.workspace.visual-workspace .quick-controls {
+  display: none;
+}
+
+.workspace.visual-workspace .composer-summary {
+  order: 1;
+  flex: 1 1 100%;
+}
+
+.workspace.visual-workspace .send-wrap {
+  order: 2;
+  flex: 1 1 100%;
+}
+
+.workspace.visual-workspace .send-button {
+  flex: 1;
+  min-height: 48px;
+  border-radius: 14px;
+  font-size: 15px;
+}
+
+/* Records no longer live in the sidebar: keep its footer pinned to the bottom */
+.sidebar-footer {
+  margin-top: auto;
+}
+
+/* ---------- Session browser mounts (always in a right rail) ---------- */
+.session-mount:empty {
+  display: none;
+}
+
+.session-browser {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+/* Chat mode: message column + right records rail */
+#chatPanel.active {
+  display: flex;
+  flex-direction: row;
+  gap: 16px;
+}
+
+.chat-main {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
+.chat-records-rail {
+  flex: 0 0 300px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 10px 0 16px;
+  padding: 14px 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+
+.chat-records-rail .section-heading {
+  padding: 0 16px 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.session-mount-chat {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.session-mount-chat .search-wrap {
+  padding: 0 12px 10px;
+}
+
+.session-mount-chat .session-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 8px 10px;
+}
+
+/* Right inspector: history panel grows, task panel keeps natural height */
+.visual-inspector .history-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.visual-inspector .inspector-panel:last-child {
+  flex: 0 1 auto;
+}
+
+.session-mount-inspector {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.session-mount-inspector .search-wrap {
+  padding: 0 12px 10px;
+}
+
+.session-mount-inspector .session-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 8px 10px;
+}
+
+@media (max-width: 900px) {
+  .session-mount-inspector .session-list {
+    max-height: 320px;
+  }
+
+  .composer-summary {
+    flex-wrap: wrap;
+  }
+
+  #chatPanel.active {
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+  }
+
+  .chat-main {
+    flex: 1 0 auto;
+    height: auto;
+    min-height: 240px;
+  }
+
+  .chat-records-rail {
+    flex: 0 0 auto;
+    width: auto;
+    margin: 0 0 12px;
+  }
+
+  .session-mount-chat .session-list {
+    max-height: 260px;
   }
 }
