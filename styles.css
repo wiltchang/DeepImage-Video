@@ -5272,3 +5272,106 @@ summary:active,
     position: fixed;
   }
 }
+/* ==========================================================================
+   Round 6 overlay (appended): mobile (<=900px) visual-mode finishing —
+   (a) the composer footer (summary row + generate button) becomes a
+   fixed bottom bar so the primary action never scrolls off-screen, and
+   (b) the preview head is finally pinned after a root-cause pass.
+
+   Head root cause (why round 5's row pinning still failed on device):
+   the legacy <=900px layer (line ~2096) sets
+   .visual-head-actions { width: 100%; } and no later layer ever reset
+   that width. Round 5 restored flex-direction: row (its (0,3,0) beats
+   the old (0,1,0) column rule), so the actions box took a flex base
+   size of 100% of the head, the unclassed title wrapper <div> (default
+   flex: 0 1 auto, min-width: auto -> min-content, and CJK text may
+   break between any two characters) collapsed to a one-character-wide
+   vertical strip, the row overflowed the panel, and round 5's
+   justify-content: flex-end parked the clear button at the far end of
+   that overflowing box — half-clipped by the screen edge. The fix
+   below kills the width, gives the title wrapper an explicit flex
+   share with min-width: 0, and forbids wrapping on both texts.
+   Everything is scoped to .workspace.visual-workspace inside the
+   <=900px query; desktop and chat mode are untouched.
+   ========================================================================== */
+@media (max-width: 900px) {
+  /* ---- (a) Fixed bottom bar: the footer leaves the card flow and pins
+     to the viewport bottom. It is the same element (summary blocks +
+     generate button), only its positioning changes. z-index 25 sits
+     above page content but below the sidebar drawer (30), the mobile
+     menu button (26) and toasts (60). No ancestor of the footer has a
+     transform/filter in visual mode, so fixed = viewport-relative. */
+  .workspace.visual-workspace .composer-footer {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 25;
+    overflow: visible;
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+    background: var(--bg-panel);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.1);
+  }
+
+  /* Page clearance so the queue's last item can scroll out from behind
+     the bar: bar height ~= 10 pad + 54 summary + ~10 row gap + 54
+     button + 10 pad = ~138px, plus the bar's own safe-area padding. */
+  .workspace.visual-workspace {
+    padding-bottom: calc(158px + env(safe-area-inset-bottom));
+  }
+
+  /* Popovers keep anchoring to the footer / summary block, which are
+     now fixed, so both layers open above the bar. Caps are restated
+     for the fixed context: the space above the bar is the viewport
+     minus ~140px, so 52dvh can never reach the top edge or be clipped
+     by the bar itself (footer overflow is visible, above). */
+  .workspace.visual-workspace .settings-popover {
+    max-height: min(52dvh, 520px);
+  }
+
+  .workspace.visual-workspace .model-popover {
+    max-height: min(380px, 52dvh);
+  }
+
+  /* ---- (b) Preview head, pinned for real this time. */
+  .workspace.visual-workspace .visual-head {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Title wrapper: explicit flex share, allowed to shrink (min-width 0)
+     but never below its single-line title (h2 is nowrap, below). */
+  .workspace.visual-workspace .visual-head > div:first-child {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .workspace.visual-workspace .visual-head h2 {
+    white-space: nowrap;
+  }
+
+  /* The actual root-cause fix: width:auto kills the legacy
+     width:100% that round 5 never reset. */
+  .workspace.visual-workspace .visual-head-actions {
+    width: auto;
+    flex: 0 0 auto;
+  }
+
+  .workspace.visual-workspace #clearImages {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  /* Belt and braces: no descendant may stretch the preview panel past
+     the viewport horizontally ever again. (.visual-main already clips
+     via overflow:hidden; clip is restated without creating a scroll
+     container.) */
+  .workspace.visual-workspace #imagePanel {
+    overflow-x: clip;
+  }
+
+  .workspace.visual-workspace .visual-main {
+    overflow-x: clip;
+  }
+}
