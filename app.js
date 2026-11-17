@@ -1,9 +1,13 @@
 const STORAGE_KEY = "yhshu_online_client_state_v1";
 const EXPORT_VERSION = 2;
-const DEFAULT_API_BASE_URL = "https://deeprouter.top";
+const DEFAULT_API_BASE_URL = "https://www.deeprouter.top";
 const LEGACY_DEFAULT_API_BASE_URLS = new Set(["https://www.yhshu.ai"]);
-const LINKMESH_API_HOST = "ai.linkmesh.org";
+const LINKMESH_API_HOSTS = new Set(["ai.linkmesh.org", "api.linkmesh.org", "www.linkmesh.org", "linkmesh.org"]);
+const DEEPLINK_API_HOSTS = new Set(["www.deeplink.cv", "deeplink.cv"]);
+const DEEPLINK_PROXY_PREFIX = "/__deeplink";
 const LINKMESH_PROXY_PREFIX = "/__linkmesh";
+const LINKMESH_API_PROXY_PREFIX = "/__linkmesh-api";
+const LINKMESH_WWW_PROXY_PREFIX = "/__linkmesh-www";
 const DEEPROUTER_API_HOST = "deeprouter.top";
 const DEEPROUTER_PROXY_PREFIX = "/__deeprouter";
 const MEDIA_CACHE_DB_NAME = "yhshu_visual_media_cache";
@@ -201,6 +205,7 @@ const VIDEO_DURATION_OPTIONS = [
 
 const GROK_VIDEO_DURATIONS = Array.from({ length: 15 }, (_, index) => index + 1);
 const MISSING_VIDEO_TASK_RETRY_LIMIT = 12;
+const VIDEO_TASK_POLL_ATTEMPTS = 720;
 
 const VIDEO_STYLE_OPTIONS = [
   { value: "cinematic", label: "电影" },
@@ -223,7 +228,7 @@ const DEFAULT_SETTINGS = {
   imageMode: "text-to-image",
   imageAspectRatio: "1:1",
   imageSize: "1024x1024",
-  imageQuality: "auto",
+  imageQuality: "medium",
   imageStyle: "auto",
   imageCount: 1,
   imageApiStyle: "auto",
@@ -539,6 +544,7 @@ function normalizeState(input) {
   if (input.settings?.imageSize && !input.settings?.imageAspectRatio) {
     settings.imageAspectRatio = aspectFromSize(input.settings.imageSize);
   }
+  settings.imageQuality = normalizeImageQualityForModel(settings.imageModel, settings.imageQuality);
   settings.imageMode = "text-to-image";
   if (isHiddenModel(settings.chatModel)) settings.chatModel = DEFAULT_SETTINGS.chatModel;
   if (isHiddenModel(settings.imageModel)) settings.imageModel = DEFAULT_SETTINGS.imageModel;
@@ -1053,7 +1059,13 @@ function bindEvents() {
         state.settings.videoModel = els.quickModel.value;
         normalizeDocumentedVeo31DraftForModel();
       }
-      else state.settings.imageModel = els.quickModel.value;
+      else {
+        state.settings.imageModel = els.quickModel.value;
+        state.settings.imageQuality = normalizeImageQualityForModel(
+          state.settings.imageModel,
+          state.settings.imageQuality
+        );
+      }
     } else {
       state.settings.chatModel = els.quickModel.value;
     }
@@ -1140,7 +1152,7 @@ function bindEvents() {
       task.missingTaskPolls = 0;
       saveState();
       renderImages();
-      pollVideoTask(task.id, { immediate: true, attempts: 120 });
+      pollVideoTask(task.id, { immediate: true, attempts: VIDEO_TASK_POLL_ATTEMPTS });
       showToast("正在刷新视频任务结果");
       return;
     }
@@ -1367,7 +1379,7 @@ function renderOutputOptions() {
   if (videoResolutionRow) videoResolutionRow.hidden = usesPixelSize;
   if (videoCountRow) videoCountRow.hidden = !isSeedanceModel(state.settings.videoModel);
   const documentedVeo31 = isDocumentedVeo31Model(state.settings.videoModel);
-  if (videoStyleRow) videoStyleRow.hidden = usesOfficialGrokRequest;
+  if (videoStyleRow) videoStyleRow.hidden = false;
   if (videoAudioRow) videoAudioRow.hidden = usesOfficialGrokRequest || documentedVeo31;
   renderOptionGroup(els.videoResolutionGroup, "videoResolution", videoResolutionOptionsForModel(), effectiveVideoResolution());
   renderStepperOptionGroup(
@@ -1492,7 +1504,10 @@ function imageQualityOptionsForModel() {
     return IMAGE_QUALITY_OPTIONS.filter((option) => ["standard", "hd"].includes(option.value));
   }
   if (model?.provider === "openai") {
-    return IMAGE_QUALITY_OPTIONS.filter((option) => ["auto", "low", "medium", "high"].includes(option.value));
+    const values = isGptImage2Model(model?.id)
+      ? ["low", "medium", "high"]
+      : ["auto", "low", "medium", "high"];
+    return IMAGE_QUALITY_OPTIONS.filter((option) => values.includes(option.value));
   }
   if (model?.provider === "gemini") {
     return IMAGE_QUALITY_OPTIONS;
@@ -1506,7 +1521,7 @@ function videoResolutionOptionsForModel() {
     return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["720p", "1080p"].includes(option.value));
   }
   if (isSeedance25Model(modelId)) {
-    return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["480p", "720p"].includes(option.value));
+    return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["480p", "720p", "1080p"].includes(option.value));
   }
   if (isSeedance2FastModel(modelId)) {
     return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["480p", "720p"].includes(option.value));
@@ -1515,7 +1530,7 @@ function videoResolutionOptionsForModel() {
     return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["480p", "720p", "1080p", "4k"].includes(option.value));
   }
   if (isGrokVideoModel(modelId)) {
-    const supported = isGrokImagine15Model(modelId) ? ["480p", "720p", "1080p"] : ["480p", "720p"];
+    const supported = ["480p", "720p"];
     return VIDEO_RESOLUTION_OPTIONS.filter((option) => supported.includes(option.value));
   }
   if (isDocumentedVeo31Model(modelId)) {
@@ -1549,6 +1564,9 @@ function videoAspectOptionsForModel() {
     return VIDEO_ASPECT_OPTIONS.filter((option) => ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].includes(option.value));
   }
   if (isGrokVideoModel(modelId)) {
+    if (isGrokImagineVideoModel(modelId)) {
+      return ["1:1", "16:9", "9:16"].map((value) => ({ value, label: value }));
+    }
     return ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"].map((value) => ({ value, label: value }));
   }
   if (isDocumentedVeo31ReferenceMode(modelId)) {
@@ -1690,7 +1708,19 @@ function isDeepRouterBaseUrl() {
 }
 
 function isLinkMeshBaseUrl() {
-  return /^https?:\/\/ai\.linkmesh\.org(?:\/|$)/i.test(String(state.settings.baseUrl || ""));
+  try {
+    return LINKMESH_API_HOSTS.has(new URL(String(state.settings.baseUrl || "")).hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+function isSub2ApiBaseUrl() {
+  try {
+    return /sub2api/i.test(new URL(String(state.settings.baseUrl || "")).hostname);
+  } catch {
+    return /sub2api/i.test(String(state.settings.baseUrl || ""));
+  }
 }
 
 function usesOfficialXaiVideoApi() {
@@ -1737,6 +1767,9 @@ function effectiveVideoAspectRatio(modelId = state.settings.videoModel) {
     return ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].includes(ratio) ? ratio : "16:9";
   }
   if (isGrokVideoModel(modelId)) {
+    if (isGrokImagineVideoModel(modelId)) {
+      return ["1:1", "16:9", "9:16"].includes(ratio) ? ratio : "16:9";
+    }
     return ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"].includes(ratio) ? ratio : "16:9";
   }
   if (isDocumentedVeo31ReferenceMode(modelId)) return "16:9";
@@ -1747,12 +1780,11 @@ function effectiveVideoAspectRatio(modelId = state.settings.videoModel) {
 function effectiveVideoResolution(modelId = state.settings.videoModel) {
   const resolution = state.settings.videoResolution;
   if (isKlingModel(modelId)) return ["720p", "1080p"].includes(resolution) ? resolution : "720p";
-  if (isSeedance25Model(modelId)) return ["480p", "720p"].includes(resolution) ? resolution : "720p";
+  if (isSeedance25Model(modelId)) return ["480p", "720p", "1080p"].includes(resolution) ? resolution : "720p";
   if (isSeedance2FastModel(modelId)) return ["480p", "720p"].includes(resolution) ? resolution : "720p";
   if (isSeedance2Model(modelId)) return ["480p", "720p", "1080p", "4k"].includes(resolution) ? resolution : "720p";
   if (isGrokVideoModel(modelId)) {
-    const supported = isGrokImagine15Model(modelId) ? ["480p", "720p", "1080p"] : ["480p", "720p"];
-    return supported.includes(resolution) ? resolution : "720p";
+    return ["480p", "720p"].includes(resolution) ? resolution : "720p";
   }
   if (isDocumentedVeo31Model(modelId)) return ["720p", "1080p"].includes(resolution) ? resolution : "720p";
   if (isVeo2Model(modelId) || isVeo31LiteModel(modelId)) return "720p";
@@ -1867,6 +1899,7 @@ function setVisualOption(key, value) {
   if (!Object.prototype.hasOwnProperty.call(DEFAULT_SETTINGS, key)) return;
   if (key === "videoDuration") state.settings[key] = effectiveVideoDurationForValue(value);
   else if (key === "videoCount") state.settings[key] = clampNumber(value, 1, 4, 1);
+  else if (key === "imageQuality") state.settings[key] = normalizeImageQualityForModel(state.settings.imageModel, value);
   else state.settings[key] = value;
   saveState();
   renderOutputOptions();
@@ -2613,7 +2646,7 @@ function imageTaskParams(isEdit) {
     mode: isEdit ? "图生图" : "文生图",
     size: effectiveImageOutputSize(settings.imageModel),
     aspectRatio: effectiveImageAspectRatio(settings.imageModel),
-    quality: settings.imageQuality,
+    quality: normalizeImageQualityForModel(settings.imageModel, settings.imageQuality),
     style: settings.imageStyle,
     count: clampNumber(settings.imageCount, 1, 4, 1),
   };
@@ -2728,11 +2761,7 @@ function buildOpenAIImageGenerationRequest(prompt, model) {
     size: imageRequestSize(settings.imageModel),
     n: clampNumber(settings.imageCount, 1, 4, 1),
   };
-  if (isGptImage) {
-    payload.response_format = "url";
-  } else {
-    payload.response_format = "url";
-  }
+  if (!isGptImage) payload.response_format = "url";
   applyImageTuning(payload, model, "openai");
   return {
     label: "OpenAI 兼容图片生成",
@@ -2900,7 +2929,8 @@ function buildOpenAIImageEditRequest(prompt, references) {
   form.append("prompt", imagePromptWithSelectedStyle(prompt, settings.imageModel));
   form.append("size", imageRequestSize(settings.imageModel));
   form.append("n", String(clampNumber(settings.imageCount, 1, 4, 1)));
-  if (settings.imageQuality !== "auto") form.append("quality", settings.imageQuality);
+  const quality = normalizeImageQualityForModel(settings.imageModel, settings.imageQuality);
+  if (quality !== "auto") form.append("quality", normalizeQualityForModel(quality, model));
   if (settings.imageStyle !== "auto" && !isGptImageModel(settings.imageModel)) form.append("style", settings.imageStyle);
   const imageField = isBananaRouterBaseUrl() ? "image[]" : "image";
   references.forEach((reference) => {
@@ -3022,8 +3052,9 @@ function geminiNativeImageSize() {
 
 function applyImageTuning(payload, model, style) {
   const settings = state.settings;
-  if (settings.imageQuality !== "auto") {
-    payload.quality = normalizeQualityForModel(settings.imageQuality, model);
+  const quality = normalizeImageQualityForModel(settings.imageModel, settings.imageQuality);
+  if (quality !== "auto") {
+    payload.quality = normalizeQualityForModel(quality, model);
   }
   if (settings.imageStyle !== "auto") {
     if (style === "gemini") payload.style_preset = settings.imageStyle;
@@ -3055,7 +3086,7 @@ function imagePromptWithSelectedStyle(prompt, modelId = state.settings.imageMode
   const stylePrompt = stylePrompts[state.settings.imageStyle];
   if (stylePrompt && (isGptImageModel(modelId) || isGemini)) controls.push(`风格：${stylePrompt}`);
   if (isGemini) {
-    const qualityPrompt = qualityPrompts[state.settings.imageQuality];
+    const qualityPrompt = qualityPrompts[normalizeImageQualityForModel(modelId, state.settings.imageQuality)];
     if (qualityPrompt) controls.push(`质量：${qualityPrompt}`);
     const size = geminiNativeImageSize();
     if (size) controls.push(`输出尺寸：${size}`);
@@ -3104,6 +3135,7 @@ async function generateVideo(prompt) {
     media: [],
     params: videoTaskParams(),
     references: videoReferenceMeta(),
+    apiBaseUrl: settings.baseUrl,
   }));
   state.visualTasks.unshift(...tasks);
   updateVisualSession(getActiveVisualSession(), prompt);
@@ -3148,12 +3180,13 @@ async function submitVideoTask(task, requestPrompt, profile, signal) {
     });
     if (!response.ok) {
       const initialError = await responseError(response);
-      const fallbackRequest = buildGrokTextVideoFallbackRequest(requestPrompt, profile, request, initialError);
+      const fallbackRequest = buildGrokVideoRouteFallbackRequest(requestPrompt, profile, request, initialError)
+        || buildGrokTextVideoFallbackRequest(requestPrompt, profile, request, initialError);
       if (!fallbackRequest) throw new Error(initialError);
       request = fallbackRequest;
       task.requestMode = request.label;
       task.requestEndpoint = request.endpoint;
-      task.rawStatus = "Multipart 通道不可用，已切换 JSON 文生视频通道";
+      task.rawStatus = "官方视频接口不可用，已切换兼容 Multipart 通道";
       response = await fetch(apiUrl(request.endpoint), {
         method: "POST",
         headers: request.headers,
@@ -3171,7 +3204,7 @@ async function submitVideoTask(task, requestPrompt, profile, signal) {
       task.status = "done";
     } else if (task.jobId) {
       task.status = "submitted";
-      pollVideoTask(task.id, { attempts: 120 });
+      pollVideoTask(task.id, { attempts: VIDEO_TASK_POLL_ATTEMPTS });
     } else {
       task.status = "empty";
       throw new Error("视频接口未返回视频或任务 ID。请检查端点返回格式。");
@@ -3459,6 +3492,13 @@ function buildGrokTextVideoFallbackRequest(prompt, profile, request, errorMessag
   return buildGrokJsonVideoRequest(prompt, profile, "/v1/videos/generations");
 }
 
+function buildGrokVideoRouteFallbackRequest(prompt, profile, request, errorMessage) {
+  if (isDeepRouterBaseUrl()) return null;
+  if (!isGrokImagineVideoModel(state.settings.videoModel) || !isGrokJsonVideoEndpoint(request?.endpoint)) return null;
+  if (!/(?:invalid url|404|not found|cannot post|status\s*415|unsupported media type|upstream returned status 415)/i.test(String(errorMessage || ""))) return null;
+  return buildGrokMultipartVideoRequest(prompt, profile, "/v1/videos");
+}
+
 function isGrokJsonVideoEndpoint(endpoint) {
   return /\/videos\/generations(?:$|[?#])/i.test(String(endpoint || ""));
 }
@@ -3467,15 +3507,14 @@ function buildGrokJsonVideoRequest(prompt, profile, endpoint) {
   const settings = state.settings;
   const body = {
     model: settings.videoModel,
-    prompt,
+    prompt: videoPromptWithSelectedStyle(prompt, settings.videoModel),
     duration: effectiveVideoDuration(settings.videoModel),
     aspect_ratio: effectiveVideoAspectRatio(settings.videoModel),
     resolution: effectiveVideoResolution(settings.videoModel),
   };
   const images = [draftMedia.firstFrame, ...draftMedia.videoImages, draftMedia.lastFrame].filter(Boolean);
-  const primaryImage = images[0];
-  if (primaryImage) body.image = { url: primaryImage.dataUrl };
-  if (images.length > 1) body.reference_images = images.slice(1, 4).map((item) => ({ url: item.dataUrl }));
+  if (images.length === 1) body.image = { url: images[0].dataUrl };
+  else if (images.length > 1) body.reference_images = images.slice(0, 4).map((item) => ({ url: item.dataUrl }));
   return {
     label: `${profile?.vendor || "xAI"} 官方视频生成`,
     endpoint,
@@ -3489,13 +3528,11 @@ function buildGrokMultipartVideoRequest(prompt, profile, endpoint) {
   const duration = effectiveVideoDuration(settings.videoModel);
   const form = new FormData();
   form.append("model", settings.videoModel);
-  form.append("prompt", prompt);
-  form.append("size", effectiveVideoAspectRatio(settings.videoModel));
+  form.append("prompt", videoPromptWithSelectedStyle(prompt, settings.videoModel));
+  form.append("size", isDeepRouterBaseUrl()
+    ? effectiveVideoResolution(settings.videoModel)
+    : effectiveVideoAspectRatio(settings.videoModel));
   form.append("seconds", String(duration));
-  if (!isThirdPartyGrokVideoModel(settings.videoModel) && !isGrokImagine15Model(settings.videoModel)) {
-    form.append("duration", String(duration));
-    form.append("resolution", effectiveVideoResolution(settings.videoModel));
-  }
   const reference = draftMedia.firstFrame
     || draftMedia.videoImages[0]
     || draftMedia.lastFrame
@@ -3505,9 +3542,13 @@ function buildGrokMultipartVideoRequest(prompt, profile, endpoint) {
   return {
     label: `${profile?.vendor || "Grok"} 第三方 Multipart 参数`,
     endpoint,
-    headers: rawAuthHeaders(),
+    headers: grokMultipartAuthHeaders(),
     body: form,
   };
+}
+
+function grokMultipartAuthHeaders() {
+  return authHeaders(false);
 }
 
 function buildGrokVideoEditRequest(prompt, profile, video) {
@@ -3517,7 +3558,7 @@ function buildGrokVideoEditRequest(prompt, profile, video) {
     headers: authHeaders(),
     body: JSON.stringify({
       model: state.settings.videoModel,
-      prompt,
+      prompt: videoPromptWithSelectedStyle(prompt, state.settings.videoModel),
       video: { url: video.dataUrl },
     }),
   };
@@ -3695,7 +3736,16 @@ function videoGenerationEndpoint(profile) {
   const endpoint = state.settings.videoEndpoint || DEFAULT_SETTINGS.videoEndpoint;
   const defaultLike = !endpoint || endpoint === DEFAULT_SETTINGS.videoEndpoint;
   if (profile?.provider === "xai") {
+    if (isDeepRouterBaseUrl() && isGrokVideoModel(state.settings.videoModel)) {
+      return "/v1/videos/generations";
+    }
     if (isThirdPartyGrokVideoModel(state.settings.videoModel)) return "/v1/videos";
+    if (isGrokImagineVideoModel(state.settings.videoModel)) {
+      if (state.settings.videoApiStyle === "generic" || isSub2ApiBaseUrl()) return "/v1/videos";
+      if (usesOfficialXaiVideoApi()) return "/v1/videos/generations";
+      if (defaultLike) return "/v1/videos";
+      return endpoint;
+    }
     if (usesOfficialXaiVideoApi()) return "/v1/videos/generations";
     if (isDeepRouterBaseUrl()) return "/v1/videos";
     if (defaultLike) return "/v1/videos";
@@ -3731,6 +3781,7 @@ function videoTaskParams() {
       aspectRatio: effectiveVideoAspectRatio(settings.videoModel),
       resolution: effectiveVideoResolution(settings.videoModel),
       duration: `${duration}s`,
+      style: settings.videoStyle,
     };
   }
   return {
@@ -3794,7 +3845,7 @@ async function pollVideoTask(taskId, options = {}) {
   const task = state.visualTasks.find((item) => item.id === taskId);
   if (!task?.jobId) return;
   if (activeVideoPolls.has(taskId)) return;
-  const attempts = clampNumber(options.attempts, 1, 240, 120);
+  const attempts = clampNumber(options.attempts, 1, VIDEO_TASK_POLL_ATTEMPTS, VIDEO_TASK_POLL_ATTEMPTS);
   activeVideoPolls.add(taskId);
   try {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -3811,9 +3862,15 @@ async function pollVideoTask(taskId, options = {}) {
 
 async function refreshVideoTaskOnce(task) {
   try {
+    if (task.apiBaseUrl && !isSameApiGateway(task.apiBaseUrl, state.settings.baseUrl)) {
+      task.lastPollError = `该任务由 ${apiGatewayLabel(task.apiBaseUrl)} 创建，请切回该 API 配置后刷新结果`;
+      saveState();
+      renderImages();
+      return "paused";
+    }
     const endpointTemplate = videoStatusEndpointForTask(task);
     const endpoint = endpointTemplate.replace("{id}", encodeVideoTaskId(task.jobId, task));
-    const response = await fetchVideoTaskResource(apiUrl(endpoint), task);
+    const response = await fetchVideoTaskResource(apiUrlForBase(task.apiBaseUrl || state.settings.baseUrl, endpoint), task);
     task.lastCheckedAt = Date.now();
     if (!response.ok) {
       task.lastPollError = await responseError(response);
@@ -3861,6 +3918,14 @@ async function refreshVideoTaskOnce(task) {
     return "pending";
   } catch (error) {
     task.lastPollError = normalizeError(error);
+    if (/artifact[_ ]gone|Artifact content is no longer available/i.test(String(error?.message || error))) {
+      task.status = "error";
+      task.error = "DeepRouter 已完成视频任务，但 New API 未保留或无法代理上游视频文件（artifact_gone）。请修复 DeepRouter 的 xAI 插件产物存储/相对 URL 代理，或改用 LinkMesh 直连。";
+      saveState();
+      renderImages();
+      showToast(task.error, true);
+      return "failed";
+    }
     if (error?.code === "invalid_json_response") {
       task.status = "error";
       task.error = task.lastPollError;
@@ -3901,6 +3966,8 @@ function videoStatusEndpointForTask(task) {
       : "/tasks?task_ids={id}";
   }
   if (task?.provider === "xai" && /^\/v1\/videos(?:\/generations)?$/i.test(String(task.requestEndpoint || ""))) {
+    if (isDeepRouterBaseUrl()) return "/v1/videos/{id}";
+    if (/\/videos\/generations$/i.test(String(task.requestEndpoint || ""))) return "/v1/videos/generations/{id}";
     return "/v1/videos/{id}";
   }
   if (task?.provider === "xai" && defaultLike) return "/v1/videos/{id}";
@@ -3919,9 +3986,6 @@ function videoStatusEndpointForTask(task) {
 
 function videoStatusHeadersForTask(task) {
   if (task?.provider === "xai") {
-    if (isDeepRouterBaseUrl() && task.requestEndpoint === "/v1/videos") {
-      return { ...rawAuthHeaders(), "Content-Type": "application/json" };
-    }
     return authHeaders();
   }
   if (task?.provider === "veo" && task.requestEndpoint === "/v1/videos") {
@@ -3948,10 +4012,32 @@ function encodeVideoTaskId(jobId, task) {
   return value.replace(/^v1beta\//, "").split("/").map(encodeURIComponent).join("/");
 }
 
+function isSameApiGateway(left, right) {
+  try {
+    const normalize = (value) => {
+      const url = new URL(normalizeApiBaseUrl(value));
+      const host = url.hostname.toLowerCase().replace(/^www\./, "");
+      const path = url.pathname.replace(/\/v1\/?$/i, "").replace(/\/+$/, "");
+      return `${url.protocol}//${host}${path}`;
+    };
+    return normalize(left) === normalize(right);
+  } catch {
+    return normalizeApiBaseUrl(left) === normalizeApiBaseUrl(right);
+  }
+}
+
+function apiGatewayLabel(value) {
+  try {
+    return new URL(normalizeApiBaseUrl(value)).host;
+  } catch {
+    return normalizeApiBaseUrl(value) || "原 API 网关";
+  }
+}
+
 function resumeVideoPolling() {
   state.visualTasks
     .filter((task) => task.type === "video" && task.jobId && ["running", "submitted"].includes(task.status))
-    .forEach((task) => pollVideoTask(task.id, { attempts: 120 }));
+    .forEach((task) => pollVideoTask(task.id, { attempts: VIDEO_TASK_POLL_ATTEMPTS }));
 }
 
 function resumeImagePolling() {
@@ -4960,7 +5046,10 @@ function selectModelFromPicker(modelId) {
     state.settings.videoModel = modelId;
     normalizeDocumentedVeo31DraftForModel();
   }
-  else if (modelPickerType === "image") state.settings.imageModel = modelId;
+  else if (modelPickerType === "image") {
+    state.settings.imageModel = modelId;
+    state.settings.imageQuality = normalizeImageQualityForModel(modelId, state.settings.imageQuality);
+  }
   else state.settings.chatModel = modelId;
   state.modelOptions = unique([modelId, ...state.modelOptions.filter((id) => !isHiddenModel(id))]);
   saveState();
@@ -4988,6 +5077,10 @@ function saveSettingsFromForm(options = {}) {
     videoStatusEndpoint: normalizeEndpoint(values.videoStatusEndpoint, DEFAULT_SETTINGS.videoStatusEndpoint),
     systemPrompt: values.systemPrompt,
   };
+  state.settings.imageQuality = normalizeImageQualityForModel(
+    state.settings.imageModel,
+    state.settings.imageQuality
+  );
   state.modelOptions = unique([
     state.settings.chatModel,
     state.settings.imageModel,
@@ -5147,35 +5240,68 @@ function apiUrl(path) {
 function apiUrlForBase(baseUrl, path) {
   const base = normalizeApiBaseUrl(baseUrl);
   if (!base) throw new Error("API Base URL 不能为空");
-  if (isLinkMeshProxyPath(path) || isDeepRouterProxyPath(path)) return path;
+  if (isLinkMeshProxyPath(path) || isDeeplinkProxyPath(path) || isDeepRouterProxyPath(path)) return path;
   let target = path;
   if (!/^https?:\/\//i.test(path)) {
     if (base.endsWith("/v1") && path.startsWith("/v1/")) target = `${base}${path.slice(3)}`;
     else if (base.endsWith("/v1") && path.startsWith("/v1beta/")) target = `${base.slice(0, -3)}${path}`;
     else target = `${base}${path}`;
   }
-  return linkMeshProxyUrl(target) || deepRouterVideoProxyUrl(target) || target;
+  // LinkMesh does not allow browser preflight requests, so its fixed
+  // same-origin route remains enabled. Other gateways stay direct and must
+  // provide CORS themselves; this is not an open proxy.
+  if (isSameOriginUrl(target)) return target;
+  return linkMeshProxyUrl(target) || deeplinkProxyUrl(target) || target;
+}
+
+function isSameOriginUrl(value) {
+  try {
+    if (typeof window === "undefined" || !window.location?.origin) return false;
+    return new URL(String(value || ""), window.location.origin).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+function deeplinkProxyUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    if (!DEEPLINK_API_HOSTS.has(url.hostname.toLowerCase())) return "";
+    return `${DEEPLINK_PROXY_PREFIX}${url.pathname}${url.search}`;
+  } catch {
+    return "";
+  }
 }
 
 function linkMeshProxyUrl(value) {
   try {
     const url = new URL(String(value || ""));
-    if (url.hostname.toLowerCase() !== LINKMESH_API_HOST) return "";
-    return `${LINKMESH_PROXY_PREFIX}${url.pathname}${url.search}`;
+    const host = url.hostname.toLowerCase();
+    if (!LINKMESH_API_HOSTS.has(host)) return "";
+    const prefix = host === "api.linkmesh.org"
+      ? LINKMESH_API_PROXY_PREFIX
+      : host === "www.linkmesh.org" || host === "linkmesh.org"
+        ? LINKMESH_WWW_PROXY_PREFIX
+        : LINKMESH_PROXY_PREFIX;
+    return `${prefix}${url.pathname}${url.search}`;
   } catch {
     return "";
   }
 }
 
 function isLinkMeshProxyPath(value) {
-  return String(value || "").startsWith(`${LINKMESH_PROXY_PREFIX}/`);
+  return /^\/__linkmesh(?:-api|-www)?\//.test(String(value || ""));
 }
 
-function deepRouterVideoProxyUrl(value) {
+function isDeeplinkProxyPath(value) {
+  return String(value || "").startsWith(`${DEEPLINK_PROXY_PREFIX}/`);
+}
+
+function deepRouterApiProxyUrl(value) {
   try {
     const url = new URL(String(value || ""));
     const host = url.hostname.toLowerCase().replace(/^www\./, "");
-    if (host !== DEEPROUTER_API_HOST || !/^\/v1\/videos\/[^/]+\/content\/?$/i.test(url.pathname)) return "";
+    if (host !== DEEPROUTER_API_HOST || !/^\/(?:v1|v1beta|api)(?:\/|$)/i.test(url.pathname)) return "";
     return `${DEEPROUTER_PROXY_PREFIX}${url.pathname}${url.search}`;
   } catch {
     return "";
@@ -5189,8 +5315,7 @@ function isDeepRouterProxyPath(value) {
 function normalizeApiBaseUrl(value) {
   return String(value || "")
     .trim()
-    .replace(/\/+$/, "")
-    .replace(/^https:\/\/www\.deeprouter\.top(?=\/|$)/i, "https://deeprouter.top");
+    .replace(/\/+$/, "");
 }
 
 function ensureApiReady() {
@@ -5288,6 +5413,20 @@ function deepestApiErrorMessage(value, depth = 0) {
 
 function normalizeError(error) {
   const message = error?.message || String(error);
+  if (isDeepRouterBaseUrl() && /(?:artifact[_ ]gone|Artifact content is no longer available)/i.test(message)) {
+    return "DeepRouter 视频任务已完成，但 New API 未保留或无法代理上游视频文件（artifact_gone）。";
+  }
+  const invalidPlatform = String(message).match(/invalid[_ ]api[_ ]platform\s*:?\s*(\d+)/i);
+  if (isGrokVideoModel(state.settings.videoModel) && invalidPlatform) {
+    const model = state.settings.videoModel || "当前 Grok 视频模型";
+    return `DeepRouter 的 ${model} 当前渠道返回 invalid api platform: ${invalidPlatform[1]}。该错误来自 /v1/videos Multipart 路由；当前客户端已改用验证成功的 /v1/videos/generations JSON 创建接口。`;
+  }
+  if (isDeepRouterBaseUrl()
+      && isGrokVideoModel(state.settings.videoModel)
+      && /plugin[_ ]usage[_ ]invalid|plugin usage enum is not an allowed value/i.test(message)) {
+    const model = state.settings.videoModel || "当前 Grok 视频模型";
+    return `DeepRouter 的 ${model} 渠道返回 plugin_usage_invalid。客户端已使用 /v1/videos/generations 的直接 JSON 请求格式；请确认服务端将该模型映射到 Sub2API 的 Grok 视频渠道，并且上游没有注入 plugin_usage 参数。`;
+  }
   if (/Failed to fetch|NetworkError when attempting to fetch resource|Load failed/i.test(message)) {
     return "请求失败：请检查 API 地址、密钥、HTTPS 和 CORS 设置。";
   }
@@ -5358,7 +5497,8 @@ function extractVideoUrls(data) {
   const pushUrl = (value, mime = "video/mp4") => {
     if (!value) return;
     if (typeof value === "string") {
-      if (value.startsWith("data:") || /^https?:\/\//i.test(value)) urls.push(value);
+      if (value.startsWith("data:")) urls.push(value);
+      else if (/^https?:\/\//i.test(value)) urls.push(apiUrl(value));
       else if (value.startsWith("/")) urls.push(apiUrl(value));
       else urls.push(`data:${mime};base64,${value}`);
     }
@@ -5453,7 +5593,10 @@ async function materializeVideoUrls(urls, task) {
 
 function isAuthenticatedVideoProxyUrl(value) {
   if (isLinkMeshProxyPath(value)) {
-    return /^\/__linkmesh\/v1\/videos\/[^/]+\/content\/?$/i.test(String(value));
+    return /^\/__linkmesh(?:-api|-www)?\/v1\/videos\/[^/]+\/content\/?$/i.test(String(value));
+  }
+  if (isDeeplinkProxyPath(value)) {
+    return /^\/__deeplink\/v1\/videos\/[^/]+\/content\/?$/i.test(String(value));
   }
   if (isDeepRouterProxyPath(value)) {
     return /^\/__deeprouter\/v1\/videos\/[^/]+\/content\/?$/i.test(String(value));
@@ -5969,6 +6112,14 @@ function normalizeQualityForModel(quality, model) {
   return quality;
 }
 
+function normalizeImageQualityForModel(modelId, quality) {
+  const value = String(quality || "").toLowerCase();
+  if (isGptImage2Model(modelId)) {
+    return ["low", "medium", "high"].includes(value) ? value : "medium";
+  }
+  return quality || "auto";
+}
+
 function mediaPayload(item) {
   return {
     name: item.name,
@@ -6091,6 +6242,7 @@ if (typeof module !== "undefined" && module.exports) {
     apiUrl,
     buildChatRequest,
     buildGrokTextVideoFallbackRequest,
+    buildGrokVideoRouteFallbackRequest,
     buildVideoRequest,
     buildVideoReferences,
     buildImageRequest,
@@ -6133,6 +6285,7 @@ if (typeof module !== "undefined" && module.exports) {
     isWebSearchModel,
     isBananaRouterBaseUrl,
     isRetryableImageError,
+    isSameApiGateway,
     imageRequestSize,
     normalizeModelRecords,
     normalizeGptImageSize,
@@ -6140,6 +6293,7 @@ if (typeof module !== "undefined" && module.exports) {
     normalizeSeedDanceDuration,
     normalizeSora2Duration,
     normalizeVeoDuration,
+    normalizeError,
     normalizeState,
     parseApiJsonResponse,
     responseError,

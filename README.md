@@ -6,17 +6,17 @@ A standalone, browser-based AI chat, image, and video creation client.
 
 [中文](#中文) | [English](#english)
 
-> This repository contains only the static web client. It does not include or deploy NewAPI, a database, Redis, or an API proxy.
+> This repository contains the static web client only. It does not include or deploy NewAPI, a database, or Redis. The bundled Nginx configuration provides optional same-origin forwarding for the configured DeepRouter and LinkMesh API routes.
 >
-> 本仓库只包含静态网页客户端，不包含也不会部署 NewAPI、数据库、Redis 或 API 代理服务。
+> 本仓库只包含静态网页客户端，不包含也不会部署 NewAPI、数据库或 Redis。随附的 Nginx 配置仅为 DeepRouter 和 LinkMesh API 提供可选的同源转发，解决浏览器跨域问题。
 
 ## 中文
 
 ### 项目介绍
 
-DeepImage2-Video 是一个无需构建步骤的纯 HTML、CSS、JavaScript 客户端。部署后，浏览器会直接请求用户配置的 AI API 服务。
+DeepImage2-Video 是一个无需构建步骤的纯 HTML、CSS、JavaScript 客户端。所有 API 请求都会直接发送到用户配置的 API Base URL，不限制域名，也不会自动改写到项目作者的服务；目标 API 需要允许当前客户端来源的 CORS 请求。
 
-默认 API 地址为 `https://deeprouter.top`，也可以连接支持相应接口的 NewAPI 或其他兼容网关。模型列表来自当前 API 的 `/v1/models` 返回结果，客户端会按厂商与聊天、图片、视频类型自动分类。
+默认 API 地址为 `https://www.deeprouter.top`，也可以连接支持相应接口的 NewAPI 或其他兼容网关。模型列表来自当前 API 的 `/v1/models` 返回结果，客户端会按厂商与聊天、图片、视频类型自动分类。
 
 ### 主要功能
 
@@ -49,7 +49,7 @@ DeepImage2-Video 是一个无需构建步骤的纯 HTML、CSS、JavaScript 客�
 
 - 现代 Chromium、Firefox 或 Safari 浏览器。
 - 一个支持所需模型与接口的 API 服务。
-- API 服务允许客户端站点进行跨域请求。
+- 所有 API 服务都需要允许客户端站点进行跨域请求（CORS）。随附的 Nginx 代理仅作为手动部署时的可选配置，不会被客户端自动使用。
 - Docker 部署需要 Docker Engine 与 Docker Compose 插件。
 - 运行测试需要 Node.js 18 或更高版本，推荐 Node.js 20。
 
@@ -301,9 +301,9 @@ GitHub Actions 会在每次推送和 Pull Request 时运行同样的测试。
 
 ### Overview
 
-DeepImage2-Video is a static HTML, CSS, and JavaScript client with no build step. Once deployed, the browser sends requests directly to the AI API configured by the user.
+DeepImage2-Video is a static HTML, CSS, and JavaScript client with no build step. Every API request is sent directly to the API Base URL configured by the user. Domains are not restricted, and the client does not silently route requests through the project author's services. The target API must allow the client origin through CORS.
 
-The default API base URL is `https://deeprouter.top`. You can replace it with NewAPI or another gateway that implements the required endpoints. Models are loaded from `/v1/models` and grouped by vendor and by chat, image, or video type.
+The default API base URL is `https://www.deeprouter.top`. You can replace it with NewAPI or another gateway that implements the required endpoints. Models are loaded from `/v1/models` and grouped by vendor and by chat, image, or video type.
 
 ### Features
 
@@ -336,7 +336,7 @@ This is a browser-to-API client. The API key is visible to the current browser u
 
 - A current Chromium, Firefox, or Safari browser.
 - An API service that supports the selected models and endpoints.
-- CORS permission for the deployed client origin.
+- CORS permission for every configured API provider. The bundled Nginx proxy is optional and is not selected automatically by the client.
 - Docker Engine and Docker Compose for the recommended container deployment.
 - Node.js 18 or newer for tests. Node.js 20 is recommended.
 

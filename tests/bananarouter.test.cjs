@@ -121,7 +121,7 @@ test("BananaRouter GPT Image uses JSON response instead of image streaming", () 
   const request = buildImageRequest("测试图片", [], false);
   const body = JSON.parse(request.body);
   assert.equal(request.endpoint, "/v1/images/generations");
-  assert.equal(body.response_format, "url");
+  assert.equal(body.response_format, undefined);
   assert.equal(body.stream, undefined);
   assert.equal(body.output_format, undefined);
 });

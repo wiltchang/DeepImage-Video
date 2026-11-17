@@ -20,6 +20,7 @@ const {
   imageSizeOptionsForModel,
   imageStyleOptionsForModel,
   normalizeGptImageSize,
+  normalizeState,
   resolveGeminiImageRoute,
   setTestSettings,
 } = require("../app.js");
@@ -81,7 +82,7 @@ test("GPT Image 1.5 uses non-streaming JSON responses", () => {
   assert.equal(request.endpoint, "/v1/images/generations");
   assert.equal(body.stream, undefined);
   assert.equal(body.output_format, undefined);
-  assert.equal(body.response_format, "url");
+  assert.equal(body.response_format, undefined);
 });
 
 test("GPT Image 2 uses synchronous JSON responses", () => {
@@ -90,8 +91,23 @@ test("GPT Image 2 uses synchronous JSON responses", () => {
 
   assert.equal(body.stream, undefined);
   assert.equal(body.output_format, undefined);
-  assert.equal(body.response_format, "url");
+  assert.equal(body.response_format, undefined);
   assert.equal(body.size, "1024x768");
+});
+
+test("DALL-E compatible generation retains response_format", () => {
+  const request = build("dall-e-3", { imageQuality: "standard" });
+  assert.equal(JSON.parse(request.body).response_format, "url");
+});
+
+test("GPT Image 2 quality options omit auto and normalize legacy settings", () => {
+  setTestSettings({ imageModel: "gpt-image-2", imageQuality: "auto" });
+  assert.deepEqual(imageQualityOptionsForModel().map((option) => option.value), ["low", "medium", "high"]);
+  const request = build("gpt-image-2", { imageQuality: "auto" });
+  assert.equal(JSON.parse(request.body).quality, "medium");
+
+  const normalized = normalizeState({ settings: { imageModel: "gpt-image-2", imageQuality: "auto" } });
+  assert.equal(normalized.settings.imageQuality, "medium");
 });
 
 test("GPT Image dimensions are normalized to channel constraints", () => {

@@ -29,9 +29,14 @@ test("NewAPI hash settings support source-compatible address encoding", () => {
   assert.deepEqual(sourceCompatible, { key: "sk-source", url: "https://www.deeprouter.top" });
 });
 
-test("www.deeprouter.top is normalized to the working gateway route", () => {
+test("www.deeprouter.top API requests use the configured gateway directly", () => {
   setTestSettings({ baseUrl: "https://www.deeprouter.top/", apiKey: "test-key" });
-  assert.equal(apiUrl("/v1/images/generations"), "https://deeprouter.top/v1/images/generations");
+  assert.equal(apiUrl("/v1/images/generations"), "https://www.deeprouter.top/v1/images/generations");
+});
+
+test("DeepRouter Grok generations use the configured gateway directly", () => {
+  setTestSettings({ baseUrl: "https://www.deeprouter.top", apiKey: "test-key" });
+  assert.equal(apiUrl("/v1/videos/generations"), "https://www.deeprouter.top/v1/videos/generations");
 });
 
 test("MJ model records remain hidden", () => {

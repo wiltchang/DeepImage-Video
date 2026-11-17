@@ -231,7 +231,7 @@ test("Seedance 2.5 exposes the official resolution, ratio, and duration ranges",
   build(model, { videoResolution: "720p", videoAspectRatio: "adaptive", videoDuration: -1 });
 
   assert.equal(isSeedance25Model(model), true);
-  assert.deepEqual(videoResolutionOptionsForModel().map((option) => option.value), ["480p", "720p"]);
+  assert.deepEqual(videoResolutionOptionsForModel().map((option) => option.value), ["480p", "720p", "1080p"]);
   assert.deepEqual(videoAspectOptionsForModel().map((option) => option.value), [
     "adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16",
   ]);
@@ -244,7 +244,7 @@ test("Seedance 2.5 exposes the official resolution, ratio, and duration ranges",
   assert.equal(normalizeSeedDanceDuration(31, model), 30);
 });
 
-test("Seedance 2.5 sends router and official parameters without unsupported quality values", () => {
+test("Seedance 2.5 sends router and official parameters including 1080p", () => {
   const request = build("doubao-seedance-2-5-260628", {
     videoResolution: "1080p",
     videoAspectRatio: "3:4",
@@ -259,10 +259,10 @@ test("Seedance 2.5 sends router and official parameters without unsupported qual
   assert.deepEqual(body.content, [{ type: "text", text: "测试视频提示词" }]);
   assert.equal(body.duration, 30);
   assert.equal(body.ratio, "3:4");
-  assert.equal(body.resolution, "720p");
+  assert.equal(body.resolution, "1080p");
   assert.equal(body.metadata.duration, 30);
   assert.equal(body.metadata.ratio, "3:4");
-  assert.equal(body.metadata.resolution, "720p");
+  assert.equal(body.metadata.resolution, "1080p");
 });
 
 test("Seedance 2.5 applies official adaptive media restrictions", () => {
