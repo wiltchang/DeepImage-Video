@@ -5375,3 +5375,53 @@ summary:active,
     overflow-x: clip;
   }
 }
+/* ==========================================================================
+   Round 7 overlay (appended): root-cause fix for the round-6 fixed bottom
+   bar parking itself at the composer card's bottom edge (mid-page) on
+   device instead of at the viewport bottom, with the settings popover
+   anchored to it clipped off the top of the screen.
+
+   Root cause: the generic layer (line ~2634) gives the card
+   .composer-card { backdrop-filter: blur(18px) saturate(130%); }.
+   Like filter, a non-none backdrop-filter makes the element a
+   containing block for fixed-position descendants, so the footer's
+   bottom: 0 resolved against its direct parent (the card), not the
+   viewport. Round 6's ancestor audit checked transform/filter only and
+   missed backdrop-filter.
+
+   Ancestor-chain re-audit for this round — html, body, .app-shell,
+   #workspace.workspace, form#composer, .composer-card — against every
+   containing-block trigger (filter, transform, translate / rotate /
+   scale, perspective, will-change, contain, backdrop-filter; clip-path
+   and container-type do not appear in the stylesheet at all): the
+   card's backdrop-filter is the ONLY hit in the whole file.
+   perspective, will-change and contain have zero declarations anywhere;
+   the remaining transform/backdrop-filter declarations all sit on
+   non-ancestors (sidebar drawer, dialogs and their ::backdrop, media
+   buttons, the summary caret) or inside @keyframes, and app.js sets
+   inline transforms only on the media viewer's image/video elements.
+   Nothing else needs neutralising.
+
+   Popover geometry, re-checked for a footer that is now truly
+   viewport-fixed (~138px tall + safe-area inset): the settings
+   popover's top edge lands at 100dvh - footer - 10px gap -
+   min(52dvh, 520px), which keeps >= ~125px of headroom on the shortest
+   portrait phones (568px) and stays positive (~30px) even in short
+   landscape viewports; the model popover (cap min(380px, 52dvh),
+   anchored to the summary block whose top edge is the footer's top)
+   keeps >= ~135px at 568px portrait. Both caps therefore stay at
+   52dvh — no tightening needed.
+
+   The card's background is already 92% opaque, so dropping the blur on
+   mobile is visually indistinguishable. Scoped to <=900px visual mode;
+   desktop (which keeps the blur, and whose footer is relative anyway)
+   and chat mode are untouched.
+   ========================================================================== */
+@media (max-width: 900px) {
+  /* Kill the containing block: with no backdrop-filter on the card, the
+     round-6 footer's position:fixed resolves against the viewport. */
+  .workspace.visual-workspace .composer-card {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
