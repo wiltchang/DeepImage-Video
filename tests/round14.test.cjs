@@ -9,6 +9,7 @@ global.document = { addEventListener() {}, createElement: () => ({}) };
 const app = require("../app.js");
 const root = path.join(__dirname, "..");
 const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+const css = fs.readFileSync(path.join(root, "styles.css"), "utf8");
 
 test("r16 #1 left menu: only 视觉创作 / AI对话, pure navigation, no new-actions", () => {
   const modes = html.match(/<nav class="main-menu" aria-label="主菜单">([\s\S]*?)<\/nav>/)[1];
@@ -17,12 +18,18 @@ test("r16 #1 left menu: only 视觉创作 / AI对话, pure navigation, no new-ac
   assert.doesNotMatch(html, /menuNewCreation|menuNewChat|menuImageMode|menuVideoMode|新建模型对话|新建视觉创作|menu-actions/);
 });
 
-test("r16 #2 #3 #4 records ＋ is the only new-session entry; type switch in settings card; no 新建队列", () => {
+test("r16 #2 #3 #4 records ＋ is the only new-session entry; type switch is an always-visible footer row; no 新建队列", () => {
   assert.match(html, /id="newRecordBtn"[^>]*aria-label=/);
   assert.equal((html.match(/id="newRecordBtn"/g) || []).length, 1);
   assert.doesNotMatch(html, /newSessionBtn|新建队列/);
   const card = html.match(/id="visualSettingsCard"[\s\S]*?id="imageOutputSettings"/)[0];
-  assert.ok(card.includes('id="visualTypeImage"') && card.includes('id="visualTypeVideo"'));
+  assert.ok(!card.includes("visualTypeImage") && !card.includes("visualTypeVideo"));
+  const footer = html.match(/<div class="composer-footer">([\s\S]*)<\/form>/)[1];
+  assert.ok(footer.indexOf('id="visualTypeSwitch"') >= 0);
+  assert.ok(footer.indexOf('id="visualTypeSwitch"') < footer.indexOf('id="visualSettingsCard"'));
+  assert.ok(footer.indexOf('id="visualTypeImage"') < footer.indexOf('id="composerSummary"'));
+  assert.ok(footer.indexOf('id="visualTypeVideo"') < footer.indexOf('id="composerSummary"'));
+  assert.match(css, /padding-bottom: calc\(196px \+ env\(safe-area-inset-bottom\)\)/);
   const tasks = [{ id: 1, createdAt: 150 }, { id: 2, createdAt: 250 }];
   assert.deepEqual(app.buildQueueGroups(tasks).map((t) => t.id), [2, 1]);
 });
@@ -33,5 +40,19 @@ test("r14 #3 chat composer: file/web chips live in the quick-controls row beside
     assert.ok(row.includes(`id="${id}"`), id);
   }
   assert.doesNotMatch(html, /id="chatToolbar"/);
-  assert.match(html, /\?v=20261118-r16/);
+  assert.match(html, /\?v=20261118-r19/);
+});
+
+test("r18 mobile chat composer toolbar stays on one nowrap row", () => {
+  const css = fs.readFileSync(path.join(__dirname, "..", "styles.css"), "utf8");
+  const i = css.indexOf("r18: mobile chat composer toolbar");
+  assert.ok(i > 0);
+  const block = css.slice(i);
+  assert.match(block, /@media \(max-width: 900px\)/);
+  assert.match(block, /\.workspace:not\(\.visual-workspace\) \.composer-row \{[^}]*flex-direction: row;[^}]*flex-wrap: nowrap;/);
+  assert.match(block, /\.workspace:not\(\.visual-workspace\) \.model-picker-trigger \{[^}]*max-width: 96px;[^}]*text-align: left;/);
+  assert.match(block, /\.send-wrap \{[^}]*margin-left: auto;/);
+  // legacy rule that stretched/centred the model chip is gone
+  assert.doesNotMatch(css, /\n  \.model-picker-trigger \{\s*width: 100%;/);
+  assert.match(html, /\?v=20261118-r19/);
 });

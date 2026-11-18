@@ -135,21 +135,30 @@ test("#9 duration slider shows ticks for the model's real steps", () => {
   assert.match(fixed.innerHTML, /disabled/);
 });
 
-test("#6 summary lists every setting for image and video", () => {
+// r19: updated from "lists every setting" — Ryan decided the bottom button shows
+// only the main items. Full options remain inside the settings panel.
+test("#6 summary shows only main items (r19: image ratio/size/count, video ratio/res/duration/count)", () => {
   app.setTestSettings({ visualMode: "image", imageModel: "gpt-image-2", imageQuality: "high", imageBackground: "transparent", imageOutputFormat: "webp", imageCount: 3, imageAspectRatio: "1:1", imageSize: "auto" });
   const image = app.settingsSummaryParts().join(" · ");
   assert.match(image, /1:1/);
-  assert.match(image, /质量 高/);
-  assert.match(image, /背景 透明/);
-  assert.match(image, /WEBP/);
   assert.match(image, /3 张/);
+  assert.doesNotMatch(image, /质量|背景|WEBP/);
 
   app.setTestSettings({ visualMode: "video", videoModel: "doubao-seedance-2-0-260128", videoStyle: "cinematic", videoAudio: false, videoCount: 2, videoDuration: 8 });
   const video = app.settingsSummaryParts().join(" · ");
-  assert.match(video, /风格 电影/);
-  assert.match(video, /静音/);
   assert.match(video, /2 条/);
   assert.match(video, /8s/);
+  assert.doesNotMatch(video, /风格|静音|有声|音频/);
+});
+
+test("r19 summary text is forced to a single line with ellipsis", () => {
+  const css = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "styles.css"), "utf8");
+  const block = css.slice(css.indexOf("r19: settings summary is always a single line"));
+  assert.match(block, /white-space: nowrap;/);
+  assert.match(block, /text-overflow: ellipsis;/);
+  assert.match(block, /word-break: keep-all;/);
+  // no later rule re-enables wrapping on the summary value
+  assert.doesNotMatch(block, /white-space: normal/);
 });
 
 test("#7 record rows know their first thumbnail and work-type badge", () => {

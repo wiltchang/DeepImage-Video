@@ -2138,11 +2138,6 @@ button {
     flex-wrap: wrap;
   }
 
-  .model-picker-trigger {
-    width: 100%;
-    max-width: none;
-  }
-
   .model-picker-dialog {
     width: 100vw;
     height: 100vh;
@@ -5004,8 +4999,9 @@ summary:active,
 .workspace.visual-workspace .summary-value {
   flex: 1 1 auto;
   min-width: 0;
-  overflow: visible;
-  text-overflow: clip;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 14px;
 }
 
@@ -6086,9 +6082,9 @@ summary:active,
 
 /* ---------- #6 Summary: allow two lines, never drop information ---------- */
 .workspace.visual-workspace .summary-value {
-  overflow: visible;
-  white-space: normal;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   line-height: 1.35;
   font-size: 13px;
 }
@@ -6099,7 +6095,7 @@ summary:active,
 
 @media (max-width: 900px) {
   .workspace.visual-workspace {
-    padding-bottom: calc(160px + env(safe-area-inset-bottom));
+    padding-bottom: calc(196px + env(safe-area-inset-bottom));
   }
 }
 
@@ -6304,8 +6300,9 @@ summary:active,
   }
 
   .workspace.visual-workspace .summary-settings-block .summary-value {
-    white-space: normal;
-    overflow-wrap: anywhere;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 
@@ -6327,7 +6324,7 @@ summary:active,
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px;
-  margin: 10px 0 4px;
+  margin: 0 0 10px;
   padding: 3px;
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -6348,4 +6345,123 @@ summary:active,
 .visual-type-option.active {
   background: var(--bg-panel);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+/* ---------- r17: type switch is an always-visible footer row ---------- */
+.visual-type-switch[hidden] {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .workspace.visual-workspace .visual-type-switch {
+    margin-bottom: 8px;
+  }
+
+  /* +36px for the always-visible switch row (30px + 8px gap, rounded) */
+  .workspace.visual-workspace {
+    padding-bottom: calc(196px + env(safe-area-inset-bottom));
+  }
+}
+
+/* ---------- r18: mobile chat composer toolbar — one nowrap row ----------
+   [model chip (left, shrinks, ellipsis)] [流式][思考][联网][文件] ......... [send]
+   The legacy <=900px rules turned .composer-row into a column and the old
+   <=560px `.model-picker-trigger{width:100%}` (plus the button's default
+   text-align:center) stretched/centred the model chip; both are scoped away
+   here (the width:100% rule was removed). Visual mode is untouched. */
+@media (max-width: 900px) {
+  .workspace:not(.visual-workspace) .composer-row {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 4px;
+    padding-top: 4px;
+  }
+
+  .workspace:not(.visual-workspace) .composer-summary {
+    flex: 0 1 auto;
+    flex-wrap: nowrap;
+    width: auto;
+    min-width: 0;
+    gap: 0;
+  }
+
+  .workspace:not(.visual-workspace) .summary-model-block {
+    flex: 0 1 auto;
+    min-width: 0;
+    padding: 0 6px;
+    gap: 4px;
+  }
+
+  .workspace:not(.visual-workspace) .model-picker-trigger {
+    width: auto;
+    min-width: 0;
+    max-width: 96px;
+    min-height: 30px;
+    gap: 4px;
+    padding: 0;
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  .workspace:not(.visual-workspace) .model-picker-trigger strong {
+    text-align: left;
+    font-size: 12px;
+  }
+
+  .workspace:not(.visual-workspace) .vendor-icon,
+  .workspace:not(.visual-workspace) .composer-summary .model-picker-trigger > span.vendor-icon {
+    width: 20px;
+    height: 20px;
+    flex-basis: 20px;
+    font-size: 10px;
+  }
+
+  .workspace:not(.visual-workspace) .quick-controls {
+    order: 2;
+    width: auto;
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    gap: 4px;
+  }
+
+  .workspace:not(.visual-workspace) .quick-controls .chip {
+    min-height: 28px;
+    padding: 0 6px;
+    font-size: 12px;
+  }
+
+  .workspace:not(.visual-workspace) .send-wrap {
+    order: 3;
+    flex: 0 0 auto;
+    margin-left: auto;
+    justify-content: flex-end;
+  }
+
+  .workspace:not(.visual-workspace) .send-button {
+    min-width: 0;
+    padding: 0 10px;
+    white-space: nowrap;
+  }
+}
+
+/* ---------- r19: settings summary is always a single line ---------- */
+.summary-settings-block .summary-value,
+.workspace.visual-workspace .summary-settings-block .summary-value {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+
+@media (max-width: 900px) {
+  .workspace.visual-workspace .summary-settings-block .summary-value {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    overflow-wrap: normal;
+    word-break: keep-all;
+  }
 }

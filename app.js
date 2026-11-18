@@ -408,6 +408,7 @@ function initElements() {
     "menuVisualNav",
     "menuChatNav",
     "newRecordBtn",
+    "visualTypeSwitch",
     "visualTypeImage",
     "visualTypeVideo",
     "connectionStatus",
@@ -2228,8 +2229,9 @@ function optionSummaryLabel(options, value) {
   return found.sub ? `${found.label} ${found.sub}` : found.label;
 }
 
-// Every setting the user can change shows up here (the block may wrap to two
-// lines; information is never dropped).
+// r19: the bottom button only shows the main items (Ryan's decision).
+// Image: ratio · size · count. Video: ratio · resolution · duration · count.
+// Quality/background/format/style/audio stay in the settings panel only.
 function settingsSummaryParts() {
   if (state.settings.visualMode === "video") {
     const modelId = state.settings.videoModel;
@@ -2241,24 +2243,12 @@ function settingsSummaryParts() {
       parts.push(optionSummaryLabel(videoResolutionOptionsWithDims(), effectiveVideoResolution()));
     }
     parts.push(duration === -1 ? "自动" : `${duration}s`);
-    parts.push(`风格 ${optionLabelForValue(VIDEO_STYLE_OPTIONS, state.settings.videoStyle)}`);
-    if (!isGrokVideoModel(modelId) && !isDocumentedVeo31Model(modelId)) {
-      parts.push(optionLabelForValue(VIDEO_AUDIO_OPTIONS, String(effectiveVideoAudio())));
-    }
     parts.push(`${effectiveVideoCount()} 条`);
     return parts;
   }
   const modelId = state.settings.imageModel;
-  const grok = isGrokImagineImageModel(modelId);
   const parts = [optionLabelForValue(imageAspectOptionsForModel(), effectiveImageAspectRatio())];
   parts.push(optionSummaryLabel(imageSizeOptionsWithDims(), effectiveImageOutputSize()));
-  if (!isSeedreamModel(modelId) && !grok) {
-    parts.push(`质量 ${optionLabelForValue(imageQualityOptionsForModel(), state.settings.imageQuality)}`);
-  }
-  if (isGptImageModel(modelId)) {
-    parts.push(`背景 ${optionLabelForValue(GPT_IMAGE_BACKGROUND_OPTIONS, gptImageBackgroundValue())}`);
-    parts.push(gptImageOutputFormatValue().toUpperCase());
-  }
   parts.push(`${modelId === "dall-e-3" ? 1 : state.settings.imageCount} 张`);
   return parts;
 }
@@ -2267,6 +2257,7 @@ function updateSettingsSummary() {
   if (!els.settingsSummaryBlock) return;
   const isVisual = activeMode === "image";
   els.settingsSummaryBlock.hidden = !isVisual;
+  if (els.visualTypeSwitch) els.visualTypeSwitch.hidden = !isVisual;
   if (!isVisual) return;
   const isVideo = state.settings.visualMode === "video";
   els.settingsSummaryLabel.textContent = isVideo ? "视频设置" : "图片设置";
