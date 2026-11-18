@@ -5441,3 +5441,313 @@ summary:active,
     display: flex;
   }
 }
+
+/* ==========================================================================
+   Round 10 overlay (appended)
+   - Shared card spec (CSS variables) for the three floating cards of the
+     creation desk: ① settings parameter card (composer + .settings-popover),
+     ② preview/canvas card (.visual-main), ③ generation queue card
+     (.queue-panel). Spacing rhythm uses only 12 / 16. Records stay in the
+     left menu (flat, not a floating card).
+   - Compact settings popover, left-menu action items, chat quick-jump
+     directory, queue batch dividers, jump highlight.
+   ========================================================================== */
+:root {
+  --card-radius: 20px;
+  --card-border: 1px solid var(--border);
+  --card-shadow: var(--shadow-md);
+  --card-pad: 16px;
+  --gap-s: 12px;
+  --gap-m: 16px;
+  --row-thumb: 40px;
+}
+
+/* ---------- Unified panel language: head + list + rows ---------- */
+.panel {
+  box-sizing: border-box;
+  border: var(--card-border);
+  border-radius: var(--card-radius);
+  background: var(--bg-panel);
+  box-shadow: var(--card-shadow);
+  padding: var(--card-pad);
+}
+
+.panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--gap-s);
+  padding: 0 0 var(--gap-s);
+}
+
+.panel-title {
+  color: var(--text-main);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.panel-sub {
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 400;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-sub b {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.panel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.panel-empty {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.panel-empty[hidden] {
+  display: none;
+}
+
+/* Shared row: 40px thumb + title / meta text, 12px gap. */
+.row-thumb {
+  flex: 0 0 var(--row-thumb);
+  width: var(--row-thumb);
+  height: var(--row-thumb);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  color: var(--text-muted);
+  background: var(--bg-panel-soft);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.row-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.row-title {
+  color: var(--text-main);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.row-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.panel-row,
+.history-item.panel-row {
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--gap-s);
+  padding: 8px;
+  margin: 0;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.panel-row:hover {
+  background: var(--bg-hover);
+}
+
+.session-item.has-thumb {
+  grid-template-columns: var(--row-thumb) minmax(0, 1fr) auto;
+  gap: var(--gap-s);
+  min-height: 56px;
+  padding: 8px;
+}
+
+/* ---------- Left menu: new chat / new creation ---------- */
+.sidebar-menu-actions {
+  margin-top: 4px;
+}
+
+.menu-actions .menu-icon {
+  font-weight: 700;
+}
+
+/* ---------- Sidebar records stay flat (not a floating card) ---------- */
+.sidebar-records.panel {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+.sidebar-records.panel .panel-head {
+  padding: 10px 14px 8px;
+}
+
+/* ---------- Three floating cards: same spec, separated by space ---------- */
+.workspace.visual-workspace .composer-card,
+.workspace.visual-workspace .visual-main,
+.visual-inspector .queue-panel {
+  border: var(--card-border);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+}
+
+.workspace.visual-workspace .visual-main {
+  background: var(--bg-panel);
+}
+
+.visual-inspector .queue-panel {
+  padding: var(--card-pad);
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+
+.visual-inspector .queue-panel .history-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+/* Gap between the settings card (left column) and the preview card. */
+@media (min-width: 901px) {
+  .workspace.visual-workspace .composer {
+    padding-right: var(--gap-m);
+  }
+}
+
+.queue-batch-divider {
+  margin: 4px 0 0;
+  padding: 0 4px;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.queue-batch-divider::after {
+  content: "";
+  display: block;
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+/* ---------- Chat right rail: quick-jump directory card ---------- */
+.chat-records-rail.panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: var(--card-pad);
+  border: var(--card-border);
+  border-radius: var(--card-radius);
+  background: var(--bg-panel);
+  box-shadow: var(--card-shadow);
+  overflow: hidden;
+}
+
+.chat-jump-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+/* ---------- Jump highlight (queue → work, quick-jump → message) ---------- */
+.jump-highlight {
+  animation: jump-flash 1.2s ease-out;
+}
+
+@keyframes jump-flash {
+  0%, 60% {
+    outline: 2px solid #2563eb;
+    outline-offset: 3px;
+    background-color: rgba(37, 99, 235, 0.1);
+  }
+  100% {
+    outline: 2px solid transparent;
+    outline-offset: 3px;
+  }
+}
+
+/* ---------- Compact settings popover (parameter card, floating) ---------- */
+.settings-popover.panel {
+  left: 0;
+  right: auto;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  padding: 14px;
+  max-height: 46dvh;
+  overflow-y: auto;
+  border-radius: var(--card-radius);
+}
+
+.settings-popover .panel-head {
+  padding-bottom: 12px;
+}
+
+.settings-popover .panel-sub {
+  max-width: 55%;
+}
+
+.settings-card.settings-popover .setting-row {
+  padding: 12px 0;
+}
+
+.settings-card.settings-popover .setting-row > span {
+  margin-bottom: 6px;
+  font-size: 11px;
+}
+
+.settings-popover .tile-grid,
+.settings-popover .pill-grid {
+  gap: 6px;
+}
+
+.settings-popover .ratio-tile {
+  min-height: 50px;
+  padding: 6px 4px 5px;
+  font-size: 12px;
+}
+
+.settings-popover .ratio-glyph {
+  height: 20px;
+}
+
+.settings-popover .pill-option {
+  min-height: 30px;
+  padding: 0 12px;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.settings-popover select,
+.settings-popover input,
+.settings-popover label {
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .workspace.visual-workspace .settings-popover.panel {
+    left: 16px;
+    right: 16px;
+    width: auto;
+    max-width: none;
+    max-height: min(46dvh, 520px);
+  }
+}

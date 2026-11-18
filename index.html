@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#f8f8f9" />
     <title>DeepImage2-Video</title>
     <link rel="icon" href="./favicon.ico?v=20260727-40" sizes="any" />
-    <link rel="stylesheet" href="./styles.css?v=20261118-r9" />
+    <link rel="stylesheet" href="./styles.css?v=20261118-r10" />
   </head>
   <body>
     <div id="app" class="app-shell">
@@ -34,9 +34,23 @@
           </nav>
         </div>
 
-        <div id="sidebarRecords" class="sidebar-records">
-          <div class="section-heading sidebar-records-heading">
-            <span>创作记录</span>
+        <div class="sidebar-main-menu sidebar-menu-actions">
+          <nav class="main-menu menu-actions" aria-label="新建">
+            <button id="menuNewChat" class="menu-item menu-action" type="button">
+              <span class="menu-icon" aria-hidden="true">＋</span>
+              <span class="menu-label">新建对话</span>
+            </button>
+            <button id="menuNewCreation" class="menu-item menu-action" type="button">
+              <span class="menu-icon" aria-hidden="true">＋</span>
+              <span class="menu-label">新建创作</span>
+            </button>
+          </nav>
+        </div>
+
+        <div id="sidebarRecords" class="sidebar-records panel">
+          <div class="panel-head sidebar-records-heading">
+            <span id="sidebarRecordsTitle" class="panel-title">创作记录</span>
+            <span id="sidebarRecordsCount" class="panel-sub">0</span>
           </div>
           <div id="sessionMountSidebar" class="session-mount session-mount-sidebar">
             <div id="sessionBrowser" class="session-browser">
@@ -76,12 +90,13 @@
             </div>
             <div id="messages" class="messages" aria-live="polite"></div>
           </div>
-          <aside class="chat-records-rail">
-            <div class="section-heading">
-              <span>对话记录</span>
-              <button id="newChatSessionBtn" class="records-new-pill" type="button">+ 新建</button>
+          <aside class="chat-records-rail panel" aria-label="快速跳转">
+            <div class="panel-head">
+              <span class="panel-title">快速跳转</span>
+              <span id="chatJumpCount" class="panel-sub">0 轮</span>
             </div>
-            <div id="sessionMountChat" class="session-mount session-mount-chat"></div>
+            <nav id="chatJumpList" class="panel-list chat-jump-list" aria-label="当前对话快速跳转"></nav>
+            <p id="chatJumpEmpty" class="panel-empty" hidden>当前对话还没有消息，发送后这里会出现每一轮的跳转目录。</p>
           </aside>
         </section>
 
@@ -108,21 +123,12 @@
             </div>
 
             <aside class="visual-inspector">
-              <section class="inspector-panel queue-panel">
-                <div class="section-heading">
-                  <span>生成队列</span>
+              <section class="inspector-panel queue-panel panel">
+                <div class="panel-head">
+                  <span class="panel-title">生成队列</span>
+                  <span class="panel-sub">排队 <b id="queueWaitingCount">0</b> · 生成中 <b id="queueRunningCount">0</b></span>
                 </div>
-                <div class="queue-stats">
-                  <div class="queue-stat">
-                    <span class="queue-stat-label">排队中</span>
-                    <strong id="queueWaitingCount" class="queue-stat-value">0</strong>
-                  </div>
-                  <div class="queue-stat">
-                    <span class="queue-stat-label">生成中</span>
-                    <strong id="queueRunningCount" class="queue-stat-value">0</strong>
-                  </div>
-                </div>
-                <div id="imageHistory" class="history-list"></div>
+                <div id="imageHistory" class="history-list panel-list"></div>
               </section>
             </aside>
           </div>
@@ -133,7 +139,7 @@
             <div class="composer-main">
             <div id="composerTitleRow" class="composer-title-row">
               <h3 id="composerTitle">图片生成</h3>
-              <button id="newSessionBtn" class="new-session-pill" type="button">+ 新建</button>
+              <button id="newSessionBtn" class="new-session-pill" type="button">+ 新建队列</button>
             </div>
             <div id="referencePanel" class="reference-panel" hidden>
               <div class="reference-panel-head">
@@ -161,7 +167,11 @@
             </div>
 
             <div class="composer-footer">
-            <div id="visualSettingsCard" class="settings-card settings-popover" hidden>
+            <div id="visualSettingsCard" class="settings-card settings-popover panel" hidden>
+              <div class="panel-head">
+                <span id="settingsPopoverTitle" class="panel-title">图片设置</span>
+                <span id="settingsPopoverSub" class="panel-sub"></span>
+              </div>
               <div id="imageOutputSettings" class="output-settings">
                 <div class="setting-row">
                   <span>图片比例</span>
@@ -437,6 +447,6 @@
     <datalist id="modelOptions"></datalist>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-    <script src="./app.js?v=20261118-r9" defer></script>
+    <script src="./app.js?v=20261118-r10" defer></script>
   </body>
 </html>

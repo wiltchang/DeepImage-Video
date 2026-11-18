@@ -409,7 +409,6 @@ function initElements() {
     "sessionBrowser",
     "sidebarRecords",
     "sessionMountSidebar",
-    "sessionMountChat",
     "sessionSearch",
     "sessionList",
     "openSettingsSide",
@@ -422,7 +421,15 @@ function initElements() {
     "composerTitle",
     "composerTitleRow",
     "newSessionBtn",
-    "newChatSessionBtn",
+    "menuNewChat",
+    "menuNewCreation",
+    "sidebarRecordsTitle",
+    "sidebarRecordsCount",
+    "chatJumpList",
+    "chatJumpCount",
+    "chatJumpEmpty",
+    "settingsPopoverTitle",
+    "settingsPopoverSub",
     "visualPanelTitle",
     "visualCanvas",
     "visualEmptyText",
@@ -850,27 +857,11 @@ function normalizeState(input) {
         },
       }))
     : [];
-  const sourceVisualTasks = Array.isArray(input.visualTasks) ? input.visualTasks : migratedImageTasks;
-  const fallbackVisualId = input.activeVisualSessionId || generateId();
-  const visualSessions = (Array.isArray(input.visualSessions) && input.visualSessions.length
-    ? input.visualSessions
-    : [
-        {
-          id: fallbackVisualId,
-          title: "视觉创作历史",
-          createdAt: sourceVisualTasks.at(-1)?.createdAt || Date.now(),
-          updatedAt: sourceVisualTasks[0]?.createdAt || Date.now(),
-          pinned: false,
-        },
-      ]).map((session) => ({
-        ...session,
-        contextEnabled: session.contextEnabled ?? settings.visualContext,
-      }));
-  const activeVisualId = visualSessions.some((session) => session.id === input.activeVisualSessionId)
-    ? input.activeVisualSessionId
-    : visualSessions[0].id;
-  const visualTasks = sourceVisualTasks.map((task) => {
-    const normalized = { ...task, sessionId: task.sessionId || activeVisualId };
+  const unified = unifyVisualData(input, migratedImageTasks, settings);
+  const visualSessions = unified.visualSessions;
+  const activeVisualId = unified.activeVisualSessionId;
+  const visualTasks = unified.visualTasks.map((task) => {
+    const normalized = { ...task };
     if (normalized.persistedMediaOmitted && normalized.status === "done" && !(normalized.media || []).length) {
       normalized.status = "empty";
       normalized.error = "此图片由旧版本生成，当时未写入浏览器缓存，请重新生成。";
@@ -885,13 +876,21 @@ function normalizeState(input) {
   if (storedImage && storedImage.type !== "image") settings.imageModel = modelRecords.find((model) => model.type === "image")?.id || DEFAULT_SETTINGS.imageModel;
   if (storedVideo && storedVideo.type !== "video") settings.videoModel = modelRecords.find((model) => model.type === "video")?.id || DEFAULT_SETTINGS.videoModel;
   const persistedModelOptions = Array.isArray(input.modelOptions) ? input.modelOptions.filter((id) => !isHiddenModel(id)) : [];
+  const legacyVisualKeys = ["videoSessions", "imageSessions", "videoTasks", "imageTasks", "activeVideoSessionId", "activeImageSessionId"];
+  const carried = { ...input };
+  legacyVisualKeys.forEach((key) => delete carried[key]);
   return {
     ...initial,
-    ...input,
+    ...carried,
     settings,
     sessions,
+    activeMode: input.activeMode === "chat" ? "chat" : "image",
+    activeSessionId: sessions.some((session) => session.id === input.activeSessionId)
+      ? input.activeSessionId
+      : mostRecentById(sessions),
     visualSessions,
     activeVisualSessionId: activeVisualId,
+    unifiedVisualVersion: UNIFIED_VISUAL_VERSION,
     visualTasks,
     images: migratedImageTasks,
     modelRecords,
@@ -903,6 +902,108 @@ function normalizeState(input) {
       ...modelRecords.map((model) => model.id),
     ]),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Round 9: unified visual sessions. One list holds sessions whose works may
+// mix images and videos (every task carries its own `type`). Older stores
+// that kept image/video sessions and tasks apart are merged here.
+// ---------------------------------------------------------------------------
+const UNIFIED_VISUAL_VERSION = 1;
+const VIDEO_MEDIA_PATTERN = /(^data:video\/|\.(mp4|webm|mov|m4v)(\?|#|$))/i;
+
+function mostRecentById(items) {
+  let best = null;
+  (items || []).forEach((item) => {
+    if (!best || (item.updatedAt || 0) > (best.updatedAt || 0)) best = item;
+  });
+  return best ? best.id : null;
+}
+
+function inferVisualTaskType(task, hint = "") {
+  if (task?.type === "image" || task?.type === "video") return task.type;
+  if (hint === "image" || hint === "video") return hint;
+  const media = Array.isArray(task?.media) ? task.media : [];
+  if (media.some((item) => VIDEO_MEDIA_PATTERN.test(String(item || "")))) return "video";
+  const profileType = task?.model ? getModelProfile(task.model)?.type : "";
+  if (profileType === "video") return "video";
+  if (profileType === "image") return "image";
+  const params = task?.params || {};
+  if (task?.jobId || params.duration || params.resolution || params.audio !== undefined) return "video";
+  return "image";
+}
+
+function unifyVisualData(input, migratedImageTasks, settings) {
+  const legacySources = [
+    [input.visualSessions, ""],
+    [input.imageSessions, "image"],
+    [input.videoSessions, "video"],
+  ];
+  const sessionHints = new Map();
+  const mergedSessions = [];
+  legacySources.forEach(([list, hint]) => {
+    if (!Array.isArray(list)) return;
+    list.forEach((session) => {
+      if (!session || !session.id || sessionHints.has(session.id)) return;
+      sessionHints.set(session.id, hint);
+      mergedSessions.push(session);
+    });
+  });
+  const taskSources = [
+    Array.isArray(input.visualTasks) ? input.visualTasks : migratedImageTasks,
+    Array.isArray(input.imageTasks) ? input.imageTasks.map((task) => ({ ...task, type: task.type || "image" })) : [],
+    Array.isArray(input.videoTasks) ? input.videoTasks.map((task) => ({ ...task, type: task.type || "video" })) : [],
+  ];
+  const seenTaskIds = new Set();
+  const sourceTasks = [];
+  taskSources.flat().forEach((task) => {
+    if (!task || task.id === undefined || task.id === null) return;
+    if (seenTaskIds.has(task.id)) return;
+    seenTaskIds.add(task.id);
+    sourceTasks.push(task);
+  });
+
+  const fallbackId = input.activeVisualSessionId || generateId();
+  if (!mergedSessions.length) {
+    mergedSessions.push({
+      id: fallbackId,
+      title: "视觉创作历史",
+      createdAt: sourceTasks.at(-1)?.createdAt || Date.now(),
+      updatedAt: sourceTasks[0]?.createdAt || Date.now(),
+      pinned: false,
+    });
+  }
+  const sessionIds = new Set(mergedSessions.map((session) => session.id));
+  const preferredActive = [
+    input.activeVisualSessionId,
+    settings.visualMode === "video" ? input.activeVideoSessionId : input.activeImageSessionId,
+    input.activeImageSessionId,
+    input.activeVideoSessionId,
+  ].find((id) => id && sessionIds.has(id));
+  const activeId = preferredActive || mostRecentById(mergedSessions);
+
+  const visualTasks = sourceTasks.map((task) => {
+    const sessionId = task.sessionId && sessionIds.has(task.sessionId) ? task.sessionId : activeId;
+    return { ...task, sessionId, type: inferVisualTaskType(task, sessionHints.get(sessionId) || "") };
+  });
+
+  const visualSessions = mergedSessions
+    .map((session) => {
+      const own = visualTasks
+        .filter((task) => task.sessionId === session.id)
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      const lastType = ["image", "video"].includes(session.lastVisualMode)
+        ? session.lastVisualMode
+        : own[0]?.type || sessionHints.get(session.id) || settings.visualMode || "image";
+      return {
+        ...session,
+        contextEnabled: session.contextEnabled ?? settings.visualContext,
+        lastVisualMode: lastType === "video" ? "video" : "image",
+        queueBatches: Array.isArray(session.queueBatches) ? session.queueBatches : [],
+      };
+    })
+    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  return { visualSessions, visualTasks, activeVisualSessionId: activeId };
 }
 
 function saveState() {
@@ -1226,6 +1327,8 @@ function createVisualSession(title = "新的视觉创作") {
     updatedAt: Date.now(),
     pinned: false,
     contextEnabled: state.settings.visualContext,
+    lastVisualMode: state.settings.visualMode === "video" ? "video" : "image",
+    queueBatches: [],
   });
   activeVisualSessionId = id;
   activeMode = "image";
@@ -1236,9 +1339,41 @@ function createVisualSession(title = "新的视觉创作") {
   return id;
 }
 
-function createWorkspaceSession() {
-  if (activeMode === "image") return createVisualSession();
-  return createSession();
+// 新建对话: switch to the language model and open a fresh chat session.
+function newChatFromMenu() {
+  activeMode = "chat";
+  closeMobileSidebar();
+  createSession();
+  els.promptInput.focus();
+}
+
+// 新建创作: a blank unified visual session. The generation type (image/video)
+// stays whatever the user is on right now.
+function newCreationFromMenu() {
+  closeMobileSidebar();
+  createVisualSession();
+  els.promptInput.focus();
+}
+
+// "+ 新建队列": start a fresh round inside the current visual session — clear
+// the draft prompt/reference slots and drop a batch marker into the queue.
+// The canvas keeps its works; no session or record entry is created.
+function startNewQueueBatch() {
+  if (activeMode !== "image") return;
+  const session = getActiveVisualSession();
+  if (session) {
+    if (!Array.isArray(session.queueBatches)) session.queueBatches = [];
+    session.queueBatches.push({ id: generateId(), at: Date.now() });
+  }
+  draftMedia = createEmptyDraftMedia();
+  els.promptInput.value = "";
+  autoResizePrompt();
+  syncImageModeFromReferences();
+  saveState();
+  renderDraftMediaTray();
+  renderVisualMeta();
+  renderImages();
+  els.promptInput.focus();
 }
 
 function updateVisualSession(session, prompt = "") {
@@ -1261,8 +1396,9 @@ function updateSession(session) {
 }
 
 function bindEvents() {
-  els.newSessionBtn.addEventListener("click", createWorkspaceSession);
-  els.newChatSessionBtn.addEventListener("click", createWorkspaceSession);
+  els.newSessionBtn.addEventListener("click", startNewQueueBatch);
+  els.menuNewChat.addEventListener("click", newChatFromMenu);
+  els.menuNewCreation.addEventListener("click", newCreationFromMenu);
   els.collapseSidebar.addEventListener("click", () => {
     els.sidebar.classList.toggle("collapsed");
   });
@@ -1559,11 +1695,8 @@ function renderModes() {
   if (els.workspace) els.workspace.classList.toggle("visual-workspace", isVisual);
   els.chatPanel.classList.toggle("active", !isVisual);
   els.imagePanel.classList.toggle("active", isVisual);
-  const sessionMount = isVisual ? els.sessionMountSidebar : els.sessionMountChat;
-  if (els.sessionBrowser && sessionMount && els.sessionBrowser.parentElement !== sessionMount) {
-    sessionMount.appendChild(els.sessionBrowser);
-  }
-  if (els.sidebarRecords) els.sidebarRecords.hidden = !isVisual;
+  if (els.sidebarRecords) els.sidebarRecords.hidden = false;
+  if (els.sidebarRecordsTitle) els.sidebarRecordsTitle.textContent = isVisual ? "创作记录" : "对话记录";
   if (els.composerTitleRow) els.composerTitleRow.hidden = !isVisual;
   closeModelPopover();
   closeSettingsPopover();
@@ -1573,7 +1706,7 @@ function renderModes() {
       ? "描述要生成的视频镜头、主体、运动和氛围"
       : "描述要生成的画面；上传参考图可进行图生图"
     : "输入消息";
-  els.sessionSearch.placeholder = isVisual ? "搜索视觉创作" : "搜索会话";
+  els.sessionSearch.placeholder = isVisual ? "搜索创作记录" : "搜索对话记录";
   if (els.menuImageMode) {
     const menuStates = [
       [els.menuImageMode, isVisual && visualMode === "image"],
@@ -2451,6 +2584,7 @@ function renderSessions() {
       return (b.updatedAt || 0) - (a.updatedAt || 0);
     });
 
+  if (els.sidebarRecordsCount) els.sidebarRecordsCount.textContent = String(source.length);
   const groups = groupSessions(sessions);
   els.sessionList.innerHTML = "";
   Object.entries(groups).forEach(([label, items]) => {
@@ -2465,7 +2599,7 @@ function renderSessions() {
   if (!sessions.length) {
     const empty = document.createElement("div");
     empty.className = "session-group-label";
-    empty.textContent = "没有匹配的会话";
+    empty.textContent = isVisual ? "没有匹配的创作记录" : "没有匹配的对话";
     els.sessionList.appendChild(empty);
   }
 }
@@ -2493,9 +2627,14 @@ function renderVisualSessionItem(session) {
     }
   });
 
-  const text = document.createElement("div");
-  text.className = "session-title";
-  text.textContent = session.title || "新的视觉创作";
+  const taskCount = state.visualTasks.filter((task) => task.sessionId === session.id).length;
+  const lastType = session.lastVisualMode === "video" ? "video" : "image";
+  const text = rowTextBlock(
+    session.title || "新的视觉创作",
+    `${taskCount} 件作品 · ${formatTime(session.updatedAt)}`
+  );
+  item.classList.add("has-thumb");
+  item.appendChild(rowThumb(lastType === "video" ? "▶" : "▦"));
 
   const actions = document.createElement("div");
   actions.className = "session-actions";
@@ -2518,6 +2657,31 @@ function renderVisualSessionItem(session) {
   item.appendChild(text);
   item.appendChild(sessionActionsMenu(actions));
   return item;
+}
+
+// Shared row pieces: the same 40px thumb + title/meta text block is used by
+// records, the generation queue and the chat quick-jump directory.
+function rowThumb(content) {
+  const thumb = document.createElement("span");
+  thumb.className = "row-thumb";
+  thumb.setAttribute("aria-hidden", "true");
+  if (content instanceof Node) thumb.appendChild(content);
+  else thumb.textContent = content;
+  return thumb;
+}
+
+function rowTextBlock(title, meta) {
+  const block = document.createElement("div");
+  block.className = "row-text";
+  const titleNode = document.createElement("div");
+  titleNode.className = "session-title row-title";
+  titleNode.textContent = title;
+  const metaNode = document.createElement("div");
+  metaNode.className = "row-meta";
+  metaNode.textContent = meta;
+  block.appendChild(titleNode);
+  block.appendChild(metaNode);
+  return block;
 }
 
 function groupSessions(sessions) {
@@ -2561,9 +2725,12 @@ function renderSessionItem(session) {
     }
   });
 
-  const text = document.createElement("div");
-  text.className = "session-title";
-  text.textContent = session.title || "新的会话";
+  const text = rowTextBlock(
+    session.title || "新的会话",
+    `${(session.messages || []).length} 条消息 · ${formatTime(session.updatedAt)}`
+  );
+  button.classList.add("has-thumb");
+  button.appendChild(rowThumb("✦"));
 
   const actions = document.createElement("div");
   actions.className = "session-actions";
@@ -2678,14 +2845,61 @@ function renderMessages() {
   messages.forEach((message, index) => {
     els.messages.appendChild(renderMessage(message, index));
   });
+  renderChatJumpList(messages);
   requestAnimationFrame(() => {
     els.messages.scrollTop = els.messages.scrollHeight;
   });
 }
 
+// Quick-jump directory: one entry per user turn of the active chat session.
+function buildChatJumpItems(messages) {
+  const items = [];
+  (messages || []).forEach((message, index) => {
+    if (message?.role !== "user") return;
+    const text = String(message.content || "").replace(/\s+/g, " ").trim();
+    items.push({
+      index,
+      turn: items.length + 1,
+      title: text ? (text.length > 40 ? `${text.slice(0, 40)}…` : text) : "（附件消息）",
+    });
+  });
+  return items;
+}
+
+function renderChatJumpList(messages) {
+  if (!els.chatJumpList) return;
+  const items = buildChatJumpItems(messages);
+  els.chatJumpList.innerHTML = "";
+  if (els.chatJumpCount) els.chatJumpCount.textContent = `${items.length} 轮`;
+  if (els.chatJumpEmpty) els.chatJumpEmpty.hidden = items.length > 0;
+  items.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "panel-row chat-jump-item";
+    button.dataset.messageIndex = String(item.index);
+    button.appendChild(rowThumb(String(item.turn)));
+    button.appendChild(rowTextBlock(item.title, `第 ${item.turn} 轮`));
+    button.addEventListener("click", () => jumpToChatMessage(item.index));
+    els.chatJumpList.appendChild(button);
+  });
+}
+
+function jumpToChatMessage(index) {
+  const node = els.messages.querySelector(`[data-message-index="${index}"]`);
+  if (!node) return;
+  if (typeof node.scrollIntoView === "function") node.scrollIntoView({ behavior: "smooth", block: "center" });
+  flashHighlight(node);
+}
+
+function flashHighlight(node) {
+  node.classList.add("jump-highlight");
+  setTimeout(() => node.classList.remove("jump-highlight"), 1200);
+}
+
 function renderMessage(message, index) {
   const wrap = document.createElement("article");
   wrap.className = `message ${message.role}${message.error ? " error" : ""}`;
+  wrap.dataset.messageIndex = String(index);
 
   const bubble = document.createElement("div");
   bubble.className = "bubble";
@@ -4688,7 +4902,7 @@ function renderImages() {
       : "输入画面描述，或上传参考图进行图生图。";
 
   reconcileVisualTaskNodes(els.imageGrid, tasks, renderVisualTask);
-  reconcileVisualTaskNodes(els.imageHistory, [...tasks].reverse(), renderHistoryItem);
+  renderQueuePanel(tasks, getActiveVisualSession()?.queueBatches);
   els.imageGrid.dataset.sessionId = String(activeVisualSessionId || "");
   requestAnimationFrame(() => {
     if (sessionChanged) {
@@ -4949,24 +5163,120 @@ function setViewerZoom(value) {
   els.viewerZoomLabel.textContent = `${Math.round(viewerZoom * 100)}%`;
 }
 
+// Group tasks into queue batches. A "+ 新建队列" marker (at = timestamp) opens a
+// new batch: tasks created at/after it belong to it. Returned newest batch first,
+// tasks newest first inside each batch.
+function buildQueueGroups(tasks, batches) {
+  const markers = [...(Array.isArray(batches) ? batches : [])].sort((a, b) => (a.at || 0) - (b.at || 0));
+  const groups = [{ index: 0, marker: null, tasks: [] }];
+  markers.forEach((marker, i) => groups.push({ index: i + 1, marker, tasks: [] }));
+  [...tasks]
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+    .forEach((task) => {
+      let idx = 0;
+      markers.forEach((marker, i) => {
+        if ((task.createdAt || 0) >= (marker.at || 0)) idx = i + 1;
+      });
+      groups[idx].tasks.push(task);
+    });
+  const hasMarkers = markers.length > 0;
+  return groups
+    .filter((group) => group.tasks.length || group.marker)
+    .reverse()
+    .map((group) => ({ ...group, showDivider: hasMarkers }));
+}
+
+function renderQueuePanel(tasks, batches) {
+  const container = els.imageHistory;
+  if (!container) return;
+  const groups = buildQueueGroups(tasks, batches);
+  const signature = groups
+    .map((group) => `${group.index}:${group.marker?.id || ""}:${group.tasks.map((task) => `${task.id}/${visualTaskRenderSignature(task)}`).join(",")}`)
+    .join("|") + `@${activeVisualSessionId}`;
+  if (container.dataset.queueSignature === signature) return;
+  container.dataset.queueSignature = signature;
+  container.innerHTML = "";
+  if (!tasks.length && !groups.length) {
+    const empty = document.createElement("p");
+    empty.className = "panel-empty";
+    empty.textContent = "还没有任务，提交生成后会出现在这里。";
+    container.appendChild(empty);
+    return;
+  }
+  groups.forEach((group) => {
+    if (group.showDivider) {
+      const divider = document.createElement("div");
+      divider.className = "queue-batch-divider";
+      divider.dataset.batchIndex = String(group.index);
+      divider.textContent = group.marker
+        ? `批次 ${group.index + 1} · ${formatTime(group.marker.at)}`
+        : "批次 1";
+      container.appendChild(divider);
+    }
+    group.tasks.forEach((task) => container.appendChild(renderHistoryItem(task)));
+  });
+}
+
 function renderHistoryItem(task) {
   const item = document.createElement("button");
   item.type = "button";
-  item.className = "history-item";
-  item.innerHTML = `
-    <div class="history-prompt">${escapeHtml(task.prompt)}</div>
-    <div class="history-meta">${escapeHtml(statusLabel(task.status))} · ${escapeHtml(task.model || "")} · ${escapeHtml(formatTime(task.createdAt))}</div>
-  `;
-  item.addEventListener("click", () => {
-    state.settings.visualMode = task.type || "image";
+  item.className = `history-item panel-row status-${task.status}`;
+  item.dataset.taskId = String(task.id);
+  item.appendChild(rowThumb(task.type === "video" ? "▶" : "▦"));
+  item.appendChild(
+    rowTextBlock(
+      task.prompt || "（无提示词）",
+      `${statusLabel(task.status)} · ${task.type === "video" ? "视频" : "图片"} · ${formatTime(task.createdAt)}`
+    )
+  );
+  item.addEventListener("click", () => locateVisualTask(task.id));
+  return item;
+}
+
+// Scroll the canvas to a task's work and flash it. If the work is not in the
+// canvas DOM (e.g. the screen was cleared) it is re-rendered from session data.
+function locateVisualTask(taskId) {
+  const task = state.visualTasks.find((item) => String(item.id) === String(taskId));
+  if (!task) return null;
+  let switched = false;
+  if (task.sessionId && task.sessionId !== activeVisualSessionId) {
+    switched = true;
     activeMode = "image";
-    activeVisualSessionId = task.sessionId || activeVisualSessionId;
-    els.promptInput.value = task.prompt || "";
-    autoResizePrompt();
+    activeVisualSessionId = task.sessionId;
     saveState();
     render();
-  });
-  return item;
+  }
+  const findNode = () =>
+    Array.from(els.imageGrid.children).find((node) => node.dataset.taskId === String(task.id));
+  let node = findNode();
+  if (!node) {
+    node = renderVisualTask(task);
+    node.dataset.taskId = String(task.id);
+    node.dataset.renderSignature = visualTaskRenderSignature(task);
+    const later = state.visualTasks
+      .filter((item) => item.sessionId === task.sessionId && (item.createdAt || 0) > (task.createdAt || 0))
+      .map((item) => findNodeById(els.imageGrid, item.id))
+      .filter(Boolean);
+    els.imageGrid.insertBefore(node, later.length ? later[later.length - 1] : null);
+    if (els.imageEmpty) els.imageEmpty.hidden = true;
+  }
+  const reveal = () => {
+    if (typeof node.scrollIntoView === "function") node.scrollIntoView({ behavior: "smooth", block: "center" });
+    flashHighlight(node);
+    const narrow = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(max-width: 900px)").matches;
+    if (narrow) {
+      const preview = els.visualCanvas?.closest(".visual-preview, .canvas-card, .visual-main") || els.visualCanvas;
+      if (preview && typeof preview.scrollIntoView === "function") preview.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+  // renderImages resets scroll on session change in a rAF; reveal after it.
+  if (switched && typeof requestAnimationFrame === "function") requestAnimationFrame(reveal);
+  else reveal();
+  return node;
+}
+
+function findNodeById(container, id) {
+  return Array.from(container.children).find((node) => node.dataset.taskId === String(id));
 }
 
 async function retryVisualTask(taskId) {
@@ -5220,6 +5530,10 @@ function clearVisualTasks() {
 function renderVisualMeta() {
   const visualMode = state.settings.visualMode;
   els.visualPanelTitle.textContent = visualMode === "video" ? "视频生成" : "图片生成";
+  if (els.settingsPopoverTitle) els.settingsPopoverTitle.textContent = visualMode === "video" ? "视频设置" : "图片设置";
+  if (els.settingsPopoverSub) {
+    els.settingsPopoverSub.textContent = visualMode === "video" ? state.settings.videoModel || "" : state.settings.imageModel || "";
+  }
   if (els.composerTitle && activeMode === "image") {
     els.composerTitle.textContent = visualMode === "video" ? "视频生成" : "图片生成";
   }
@@ -6912,6 +7226,10 @@ if (typeof module !== "undefined" && module.exports) {
     normalizeVeoDuration,
     normalizeError,
     normalizeState,
+    unifyVisualData,
+    inferVisualTaskType,
+    buildQueueGroups,
+    buildChatJumpItems,
     parseApiJsonResponse,
     responseError,
     parseLinkedNewApiSettings,
@@ -6929,6 +7247,16 @@ if (typeof module !== "undefined" && module.exports) {
     videoStatusHeadersForTask,
     setTestSettings(settings) {
       state.settings = { ...DEFAULT_SETTINGS, ...settings };
+    },
+    els,
+    locateVisualTask,
+    renderQueuePanel,
+    renderChatJumpList,
+    jumpToChatMessage,
+    setTestVisualState(sessions, tasks, activeId) {
+      state.visualSessions = sessions;
+      state.visualTasks = tasks;
+      activeVisualSessionId = activeId;
     },
     setTestDraftMedia(media) {
       draftMedia = { ...createEmptyDraftMedia(), ...media };
