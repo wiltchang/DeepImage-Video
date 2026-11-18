@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#f8f8f9" />
     <title>DeepImage2-Video</title>
     <link rel="icon" href="./favicon.ico?v=20260727-40" sizes="any" />
-    <link rel="stylesheet" href="./styles.css?v=20261118-r12" />
+    <link rel="stylesheet" href="./styles.css?v=20261118-r13" />
   </head>
   <body>
     <div id="app" class="app-shell">
@@ -73,7 +73,13 @@
               <span class="avatar">AI</span>
               <span class="plain-row-text">设置</span>
             </button>
-            <div id="connectionStatus" class="connection-status">未配置 API 地址</div>
+            <div id="connectionStatus" class="connection-status status-missing" role="status" tabindex="0" title="未设置 API 地址 · 未配置密钥">
+              <span class="conn-dot" aria-hidden="true"></span>
+              <span class="conn-text">
+                <span id="connectionHost" class="conn-host">未设置 API 地址</span>
+                <span id="connectionLabel" class="conn-label">未配置密钥</span>
+              </span>
+            </div>
           </div>
         </div>
       </aside>
@@ -85,8 +91,8 @@
           <div class="chat-main">
             <div id="emptyChat" class="empty-state">
               <div class="empty-icon">✦</div>
-              <h2>开始一次创作</h2>
-              <p>选择模型后输入内容。</p>
+              <h2>开始一次对话</h2>
+              <p>输入问题即可开始；可上传文件或开启联网搜索。</p>
             </div>
             <div id="messages" class="messages" aria-live="polite"></div>
           </div>
@@ -96,7 +102,7 @@
               <span id="chatJumpCount" class="panel-sub">0 轮</span>
             </div>
             <nav id="chatJumpList" class="panel-list chat-jump-list" aria-label="当前对话快速跳转"></nav>
-            <p id="chatJumpEmpty" class="panel-empty" hidden>当前对话还没有消息，发送后这里会出现每一轮的跳转目录。</p>
+            <p id="chatJumpEmpty" class="panel-empty" hidden>暂无消息，发送后显示每轮跳转。</p>
           </aside>
         </section>
 
@@ -115,7 +121,7 @@
               <div id="visualCanvas" class="visual-canvas">
                 <div id="imageEmpty" class="empty-state compact">
                   <div class="empty-icon">◎</div>
-                  <h2>创建视觉内容</h2>
+                  <h2 id="visualEmptyTitle">开始一次图片创作</h2>
                   <p id="visualEmptyText">输入画面描述，或上传参考图进行图生图。</p>
                 </div>
                 <div id="imageGrid" class="visual-grid"></div>
@@ -144,10 +150,11 @@
             <div id="referencePanel" class="reference-panel" hidden>
               <div class="reference-panel-head">
                 <span class="reference-panel-title">参考素材</span>
-                <span id="referenceCount" class="soft-count">0 / 9</span>
+                <span id="referenceCount" class="soft-count">0 / 9 · 最多 9 个</span>
               </div>
               <div id="draftMediaTray" class="draft-media-tray reference-grid"></div>
-              <p id="referenceSlotHint" class="reference-slot-hint" hidden>素材可分别用作商品、模特、场景与声音参考</p>
+              <div id="referencePurposeMenu" class="reference-purpose-menu" role="group" aria-label="指定素材用途" hidden></div>
+              <p id="referenceSlotHint" class="reference-slot-hint" hidden>先点 ＋ 上传，再点缩略图指定用途</p>
             </div>
             <div id="chatToolbar" class="chat-toolbar" hidden>
               <button id="uploadChatFileButton" class="chip tool-chip" type="button" title="上传文件">＋ 文件</button>
@@ -163,7 +170,10 @@
               <button id="uploadAudioButton" class="chip tool-chip video-tool" type="button">音频</button>
             </div>
 
-            <textarea id="promptInput" rows="1" placeholder="描述要生成的画面；上传参考图可进行图生图" aria-label="输入消息"></textarea>
+            <div class="prompt-box">
+              <textarea id="promptInput" rows="1" placeholder="描述要生成的画面；上传参考图可进行图生图" aria-label="输入消息"></textarea>
+              <span id="promptCounter" class="prompt-counter" aria-live="off">0 字</span>
+            </div>
             </div>
 
             <div class="composer-footer">
@@ -282,7 +292,7 @@
       <div class="settings-header">
         <div>
           <h2>设置</h2>
-          <span id="connectionState" class="status-pill">未测试</span>
+          <span id="connectionState" class="status-pill">未配置密钥</span>
         </div>
         <button id="closeSettings" class="settings-close" type="button" aria-label="关闭" title="关闭">×</button>
       </div>
@@ -445,8 +455,8 @@
     <input id="audioReferenceFile" type="file" accept="audio/mpeg,audio/wav,audio/mp4,audio/webm" hidden />
     <input id="chatAttachmentFiles" type="file" accept="image/*,text/*,.pdf,.doc,.docx,.csv,.json,.md,.xml" multiple hidden />
     <datalist id="modelOptions"></datalist>
-    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <div id="toast" class="toast" popover="manual" role="status" aria-live="polite" hidden></div>
 
-    <script src="./app.js?v=20261118-r12" defer></script>
+    <script src="./app.js?v=20261118-r13" defer></script>
   </body>
 </html>

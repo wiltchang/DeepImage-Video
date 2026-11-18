@@ -376,6 +376,12 @@ let abortController = null;
 const activeImageRequests = new Map();
 let toastTimer = null;
 let deleteArmed = null;
+// #13: one shared textarea (#promptInput) serves chat and visual modes, so the
+// draft is kept per context (mode + session) and swapped on context change.
+const promptDrafts = new Map();
+let promptDraftKey = null;
+// Connection state shown in the sidebar and the settings pill (same wording).
+let connectionResult = { status: "untested", fingerprint: "" };
 let draftMedia = createEmptyDraftMedia();
 let viewerZoom = 1;
 let modelPopoverType = "chat";
@@ -443,6 +449,9 @@ function initElements() {
     "referencePanel",
     "referenceCount",
     "referenceSlotHint",
+    "referencePurposeMenu",
+    "promptCounter",
+    "visualEmptyTitle",
     "chatToolbar",
     "chatWebToggle",
     "uploadChatFileButton",
@@ -490,6 +499,8 @@ function initElements() {
     "overlay",
     "settingsDialog",
     "connectionState",
+    "connectionHost",
+    "connectionLabel",
     "connectionDetail",
     "baseUrl",
     "apiKey",
@@ -1374,6 +1385,17 @@ function startNewQueueBatch() {
   renderVisualMeta();
   renderImages();
   els.promptInput.focus();
+  showToast("已新建队列：提示词与素材已清空，首个任务提交后会出现批次分隔");
+}
+
+// Auto title: first prompt, whitespace collapsed, cut to ~20 characters.
+const AUTO_TITLE_MAX = 20;
+
+function summarizeTitle(text, fallback = "", max = AUTO_TITLE_MAX) {
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  if (!clean) return fallback;
+  const chars = Array.from(clean);
+  return chars.length > max ? `${chars.slice(0, max).join("")}…` : clean;
 }
 
 function updateVisualSession(session, prompt = "") {
@@ -1381,7 +1403,7 @@ function updateVisualSession(session, prompt = "") {
   session.updatedAt = Date.now();
   session.lastVisualMode = state.settings.visualMode;
   if ((!session.title || session.title === "新的视觉创作") && prompt.trim()) {
-    session.title = prompt.trim().slice(0, 36) || "新的视觉创作";
+    session.title = summarizeTitle(prompt, "新的视觉创作");
   }
   saveState();
 }
@@ -1390,7 +1412,7 @@ function updateSession(session) {
   session.updatedAt = Date.now();
   if ((!session.title || session.title === "新的会话") && session.messages.length) {
     const firstUser = session.messages.find((message) => message.role === "user");
-    if (firstUser?.content) session.title = firstUser.content.trim().slice(0, 36) || "新的会话";
+    if (firstUser?.content) session.title = summarizeTitle(firstUser.content, "新的会话");
   }
   saveState();
 }
@@ -1428,6 +1450,9 @@ function bindEvents() {
     saveState();
     const badge = slider.closest(".duration-control")?.querySelector(".duration-value");
     if (badge) badge.textContent = option.label;
+    slider.closest(".duration-control")?.querySelectorAll(".duration-tick").forEach((tick) => {
+      tick.classList.toggle("is-current", Number(tick.dataset.tickIndex) === Number(slider.value));
+    });
     updateSettingsSummary();
     renderVisualMeta();
   });
@@ -1436,9 +1461,17 @@ function bindEvents() {
     renderOutputOptions();
   });
   els.testConnection.addEventListener("click", testConnection);
+  // Editing credentials invalidates an earlier test result.
+  [els.baseUrl, els.apiKey].forEach((input) => input?.addEventListener("input", renderConnectionStatus));
   els.saveSettings.addEventListener("click", () => saveSettingsFromForm());
   els.toggleApiKey.addEventListener("click", toggleApiKeyVisibility);
-  els.copyApiKey.addEventListener("click", () => copyText(els.apiKey.value));
+  els.copyApiKey.addEventListener("click", () => {
+    if (!els.apiKey.value.trim()) {
+      showToast("还没有填写 API Key，无法复制", true);
+      return;
+    }
+    copyText(els.apiKey.value, "已复制 API Key");
+  });
   els.settingsDialog.querySelectorAll("[data-settings-tab]").forEach((button) => {
     button.addEventListener("click", () => setSettingsTab(button.dataset.settingsTab));
   });
@@ -1465,6 +1498,13 @@ function bindEvents() {
   els.clearImages.addEventListener("click", clearVisualTasks);
   els.composer.addEventListener("submit", onSubmit);
   els.promptInput.addEventListener("input", autoResizePrompt);
+  document.addEventListener("keydown", (event) => {
+    const pick = event.target.closest?.("[data-pick-media]");
+    if (pick && (event.key === "Enter" || event.key === " ")) {
+      event.preventDefault();
+      pick.click();
+    }
+  });
   els.promptInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
@@ -1582,13 +1622,31 @@ function bindEvents() {
   document.addEventListener("click", (event) => {
     const optionButton = event.target.closest("[data-setting-key]");
     if (optionButton) {
+      if (optionButton.dataset.disabledReason) {
+        showToast(optionButton.dataset.disabledReason, true);
+        return;
+      }
       setVisualOption(optionButton.dataset.settingKey, optionButton.dataset.value);
+      return;
+    }
+
+    const purposeButton = event.target.closest("[data-purpose-key]");
+    if (purposeButton) {
+      assignDraftPurpose(purposeButton.dataset.purposeKey);
       return;
     }
 
     const removeButton = event.target.closest("[data-remove-media]");
     if (removeButton) {
       removeDraftMedia(removeButton.dataset.removeMedia, removeButton.dataset.mediaId);
+      return;
+    }
+
+    const pickMedia = event.target.closest("[data-pick-media]");
+    if (pickMedia && !event.target.closest("[data-remove-media]")) {
+      const same = selectedDraftMedia?.key === pickMedia.dataset.pickMedia && selectedDraftMedia?.id === pickMedia.dataset.mediaId;
+      selectedDraftMedia = same ? null : { key: pickMedia.dataset.pickMedia, id: pickMedia.dataset.mediaId };
+      renderDraftMediaTray();
       return;
     }
 
@@ -1660,7 +1718,28 @@ function setVisualMode(mode) {
   render();
 }
 
+function currentPromptDraftKey() {
+  return activeMode === "image" ? `v:${activeVisualSessionId}` : `c:${activeSessionId}`;
+}
+
+// Save the textarea into the context we are leaving and load the draft of the
+// one we are entering (empty if none). Must run before anything re-fills the box.
+function syncPromptDraft() {
+  if (!els.promptInput) return;
+  const key = currentPromptDraftKey();
+  if (promptDraftKey === key) return;
+  if (promptDraftKey !== null) {
+    const value = els.promptInput.value;
+    if (value) promptDrafts.set(promptDraftKey, value);
+    else promptDrafts.delete(promptDraftKey);
+  }
+  els.promptInput.value = promptDrafts.get(key) || "";
+  promptDraftKey = key;
+  autoResizePrompt();
+}
+
 function render() {
+  syncPromptDraft();
   renderHeader();
   renderModes();
   renderSessions();
@@ -1674,6 +1753,20 @@ function render() {
   syncSettingsForm();
 }
 
+// Display name first (API display_name / catalog label), raw id as fallback.
+function modelDisplayName(modelId) {
+  if (!modelId) return "";
+  const label = String(getModelProfile(modelId)?.label || "").trim();
+  return label || modelId;
+}
+
+// Tooltip text: the full display name, plus the raw id when they differ.
+function modelFullName(modelId) {
+  if (!modelId) return "";
+  const name = modelDisplayName(modelId);
+  return name !== modelId ? `${name}（${modelId}）` : name;
+}
+
 function renderHeader() {
   const isVisual = activeMode === "image";
   const visualMode = state.settings.visualMode;
@@ -1683,8 +1776,8 @@ function renderHeader() {
       : state.settings.imageModel
     : state.settings.chatModel;
   if (els.sidebarModelName) {
-    els.sidebarModelName.textContent = model || "未选择模型";
-    els.sidebarModelName.title = model || "";
+    els.sidebarModelName.textContent = modelDisplayName(model) || "未选择模型";
+    els.sidebarModelName.title = modelFullName(model);
   }
   document.title = "DeepImage2-Video";
 }
@@ -1701,6 +1794,7 @@ function renderModes() {
   closeModelPopover();
   closeSettingsPopover();
   if (els.composerTitle && !isVisual) els.composerTitle.textContent = "语言模型";
+  els.promptInput.setAttribute("aria-label", isVisual ? "输入提示词" : "输入消息");
   els.promptInput.placeholder = isVisual
     ? visualMode === "video"
       ? "描述要生成的视频镜头、主体、运动和氛围"
@@ -1719,10 +1813,39 @@ function renderModes() {
       else item.removeAttribute("aria-current");
     });
   }
+  updatePromptCounter();
   renderConnectionStatus();
 }
 
+// One vocabulary everywhere (sidebar + settings pill):
+// 未配置密钥 / 未测试 / 连接失败 / 已连接 (+ transient 测试中).
+const CONNECTION_LABELS = {
+  missing: "未配置密钥",
+  untested: "未测试",
+  error: "连接失败",
+  ok: "已连接",
+  testing: "测试中",
+};
+
+function connectionFingerprint(connection) {
+  return `${connection.baseUrl}|${connection.apiKey}`;
+}
+
+function currentConnectionStatus() {
+  const connection = settingsConnectionValues();
+  if (!connection.apiKey) return "missing";
+  if (connectionResult.status === "testing") return "testing";
+  if (connectionResult.fingerprint === connectionFingerprint(connection)) return connectionResult.status;
+  return "untested";
+}
+
 function renderConnectionStatus() {
+  const status = currentConnectionStatus();
+  const label = CONNECTION_LABELS[status];
+  if (els.connectionState) {
+    els.connectionState.textContent = label;
+    els.connectionState.className = `status-pill${status === "ok" ? " ok" : status === "error" ? " error" : ""}`;
+  }
   if (!els.connectionStatus) return;
   const raw = String(state.settings.baseUrl || "").trim();
   let host = "";
@@ -1731,12 +1854,10 @@ function renderConnectionStatus() {
   } catch {
     host = "";
   }
-  const hasKey = Boolean(String(state.settings.apiKey || "").trim());
-  els.connectionStatus.textContent = host
-    ? `${host} · ${hasKey ? "已配置" : "未配置密钥"}`
-    : "未配置 API 地址";
-  els.connectionStatus.title = raw;
-  els.connectionStatus.classList.toggle("is-ready", Boolean(host && hasKey));
+  els.connectionStatus.className = `connection-status status-${status}`;
+  if (els.connectionHost) els.connectionHost.textContent = host || "未设置 API 地址";
+  if (els.connectionLabel) els.connectionLabel.textContent = label;
+  els.connectionStatus.title = `${host || "未设置 API 地址"} · ${label}`;
 }
 
 function renderControls() {
@@ -1786,11 +1907,8 @@ function renderControls() {
       : state.settings.imageModel
     : state.settings.chatModel;
   const selectedProfile = getModelProfile(selectedModel);
-  const displayName = selectedProfile?.label && selectedProfile.label !== selectedModel
-    ? selectedProfile.label
-    : selectedModel;
-  els.quickModelLabel.textContent = displayName || "未选择模型";
-  els.quickModelLabel.title = selectedModel || "";
+  els.quickModelLabel.textContent = modelDisplayName(selectedModel) || "未选择模型";
+  els.quickModelLabel.title = modelFullName(selectedModel);
   const vendorName = selectedProfile?.vendor || "";
   els.quickModelVendor.textContent = vendorName ? vendorName.charAt(0).toUpperCase() : "✦";
   els.quickModelVendor.title = vendorName;
@@ -1877,7 +1995,10 @@ function renderOutputOptions() {
   if (imageWatermarkRow) imageWatermarkRow.hidden = !seedreamSelected;
   if (imageSequentialRow) imageSequentialRow.hidden = !seedreamSelected;
   renderTileGroup(els.imageAspectGroup, "imageAspectRatio", imageAspectOptionsForModel(), effectiveImageAspectRatio());
-  renderOptionGroup(els.imageSizeGroup, "imageSize", imageSizeOptionsForModel(), effectiveImageOutputSize(), { tiered: true });
+  renderOptionGroup(els.imageSizeGroup, "imageSize", imageSizeOptionsWithDims(), effectiveImageOutputSize(), {
+    tiered: true,
+    hint: imageSizeRatioMismatchHint(),
+  });
   renderOptionGroup(
     els.imageQualityGroup,
     "imageQuality",
@@ -1886,15 +2007,16 @@ function renderOutputOptions() {
   );
   renderOptionGroup(els.imageStyleGroup, "imageStyle", imageStyleOptionsForModel(), state.settings.imageStyle);
   if (els.imageBackgroundGroup) {
-    renderOptionGroup(els.imageBackgroundGroup, "imageBackground", GPT_IMAGE_BACKGROUND_OPTIONS, gptImageBackgroundValue());
+    renderOptionGroup(els.imageBackgroundGroup, "imageBackground", gptImageBackgroundOptions(), gptImageBackgroundValue());
   }
   if (els.imageFormatGroup) {
-    renderOptionGroup(els.imageFormatGroup, "imageOutputFormat", GPT_IMAGE_FORMAT_OPTIONS, gptImageOutputFormatValue());
+    renderOptionGroup(els.imageFormatGroup, "imageOutputFormat", gptImageFormatOptions(), gptImageOutputFormatValue());
   }
   renderOptionGroup(els.imageWatermarkGroup, "imageWatermark", BOOL_SETTING_OPTIONS, String(!!state.settings.imageWatermark));
   renderOptionGroup(els.imageSequentialGroup, "imageSequential", BOOL_SETTING_OPTIONS, String(!!state.settings.imageSequential));
   renderOptionGroup(els.imageCountGroup, "imageCount", COUNT_SETTING_OPTIONS, String(isDallE3 ? 1 : state.settings.imageCount), {
     disabled: isDallE3,
+    disabledReason: "DALL-E 3 每次仅生成 1 张",
   });
   els.imageCountGroup.title = isDallE3 ? "DALL-E 3 每次仅生成 1 张" : "";
   renderTileGroup(els.videoAspectGroup, "videoAspectRatio", videoAspectOptionsForModel(), effectiveVideoAspectRatio());
@@ -1911,12 +2033,13 @@ function renderOutputOptions() {
   const documentedVeo31 = isDocumentedVeo31Model(state.settings.videoModel);
   if (videoStyleRow) videoStyleRow.hidden = false;
   if (videoAudioRow) videoAudioRow.hidden = usesOfficialGrokRequest || documentedVeo31;
-  renderOptionGroup(els.videoResolutionGroup, "videoResolution", videoResolutionOptionsForModel(), effectiveVideoResolution(), { tiered: true });
+  renderOptionGroup(els.videoResolutionGroup, "videoResolution", videoResolutionOptionsWithDims(), effectiveVideoResolution(), { tiered: true });
   renderDurationSlider(els.videoDurationGroup, "videoDuration", videoDurationOptionsForModel(), String(effectiveVideoDuration()));
   renderOptionGroup(els.videoCountGroup, "videoCount", COUNT_SETTING_OPTIONS, String(effectiveVideoCount()));
   renderOptionGroup(els.videoStyleGroup, "videoStyle", VIDEO_STYLE_OPTIONS, state.settings.videoStyle);
   renderOptionGroup(els.videoAudioGroup, "videoAudio", VIDEO_AUDIO_OPTIONS, String(effectiveVideoAudio()), {
     disabled: isVeoModel(state.settings.videoModel),
+    disabledReason: isVeo2Model(state.settings.videoModel) ? "Veo 2 仅生成静音视频" : "Veo 3 系列始终生成音频",
   });
   els.videoAudioGroup.title = isVeo2Model(state.settings.videoModel)
     ? "Veo 2 仅生成静音视频"
@@ -1924,16 +2047,110 @@ function renderOutputOptions() {
   updateSettingsSummary();
 }
 
+// ---- Real pixel sizes (display only; request values are untouched) ----
+function parseRatioPair(value) {
+  const text = String(value || "");
+  const colon = text.match(/^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/);
+  const pixels = text.match(/^(\d+)\s*[x×]\s*(\d+)$/i);
+  const match = colon || pixels;
+  if (!match) return null;
+  const w = Number(match[1]);
+  const h = Number(match[2]);
+  return w > 0 && h > 0 ? { w, h } : null;
+}
+
+function formatPixelSize(width, height) {
+  return `${width}×${height}`;
+}
+
+// Image tiers: the tier is the LONG edge (1K=1024, 2K=2048, 4K=4096, 0.5K=512);
+// the short edge follows the ratio, rounded to a multiple of 16.
+// 16:9 @ 2K -> 2048×1152.
+function imageTierPixelSize(tier, aspect) {
+  const longEdge = { "0.5k": 512, "1k": 1024, "2k": 2048, "4k": 4096 }[String(tier || "").toLowerCase()];
+  const ratio = parseRatioPair(aspect);
+  if (!longEdge || !ratio) return "";
+  const long = Math.max(ratio.w, ratio.h);
+  const short = Math.max(16, Math.round(((longEdge * Math.min(ratio.w, ratio.h)) / long) / 16) * 16);
+  return ratio.w >= ratio.h ? formatPixelSize(longEdge, short) : formatPixelSize(short, longEdge);
+}
+
+// Video resolutions: the tier is the SHORT edge (480/720/1080, 2K=1440, 4K=2160).
+// 16:9 @ 720p -> 1280×720; 9:16 @ 1080p -> 1080×1920.
+function videoTierPixelSize(tier, aspect) {
+  const shortEdge = { "480p": 480, "720p": 720, "1080p": 1080, "2k": 1440, "4k": 2160 }[String(tier || "").toLowerCase()];
+  const ratio = parseRatioPair(aspect);
+  if (!shortEdge || !ratio) return "";
+  const even = (value) => Math.round(value / 2) * 2;
+  const long = even((shortEdge * Math.max(ratio.w, ratio.h)) / Math.min(ratio.w, ratio.h));
+  return ratio.w >= ratio.h ? formatPixelSize(long, shortEdge) : formatPixelSize(shortEdge, long);
+}
+
+// Size an "auto" choice resolves to for the current ratio (non-tier models).
+function autoImageSizeFor(modelId, aspect) {
+  if (isGptImage2Model(modelId)) return normalizeGptImageSize(gptImage2SizeFromAspect(aspect), aspect);
+  if (isGptImageModel(modelId)) return normalizeLegacyGptImageSize(sizeFromAspect(aspect), aspect);
+  const profile = getModelProfile(modelId);
+  if (profile?.provider === "gemini" || isSeedreamModel(modelId) || isGrokImagineImageModel(modelId)) return "";
+  return sizeFromAspect(aspect);
+}
+
+// Size options with the real pixel size for the chosen ratio attached.
+function imageSizeOptionsWithDims() {
+  const aspect = effectiveImageAspectRatio();
+  const modelId = state.settings.imageModel;
+  return imageSizeOptionsForModel().map((option) => {
+    if (/^(?:0\.5|1|2|4)k$/i.test(String(option.value))) {
+      const sub = imageTierPixelSize(option.value, aspect);
+      return sub ? { ...option, sub } : option;
+    }
+    if (option.value === "auto") {
+      const auto = autoImageSizeFor(modelId, aspect);
+      const parsed = parseRatioPair(auto);
+      return parsed ? { ...option, sub: formatPixelSize(parsed.w, parsed.h) } : option;
+    }
+    return option;
+  });
+}
+
+function videoResolutionOptionsWithDims() {
+  const aspect = effectiveVideoAspectRatio();
+  return videoResolutionOptionsForModel().map((option) => {
+    const sub = videoTierPixelSize(option.value, aspect);
+    return sub ? { ...option, sub } : option;
+  });
+}
+
+// Explicit pixel size that no longer matches the chosen ratio (e.g. 16:9 with
+// 1024×1024): tell the user instead of showing a contradictory label.
+function imageSizeRatioMismatchHint() {
+  const size = parseRatioPair(effectiveImageOutputSize());
+  const selected = String(state.settings.imageSize || "");
+  if (!size || selected === "auto" || /^(?:0\.5|1|2|4)k$/i.test(selected)) return "";
+  const aspect = parseRatioPair(effectiveImageAspectRatio());
+  if (!aspect) return "";
+  const drift = Math.abs(size.w / size.h - aspect.w / aspect.h) / (aspect.w / aspect.h);
+  if (drift < 0.06) return "";
+  return `当前输出 ${formatPixelSize(size.w, size.h)}，与所选比例 ${effectiveImageAspectRatio()} 不一致；选「自动」可按比例匹配。`;
+}
+
+// An option may carry `sub` (small second text, e.g. real pixels) and
+// `disabledReason`. Unavailable options are greyed out but stay clickable so
+// the click can explain why (toast) instead of being silently ignored.
 function renderOptionGroup(container, key, options, currentValue, config = {}) {
   container.innerHTML = options
     .map((option) => {
       const active = String(option.value) === String(currentValue) ? " active" : "";
       const tier = config.tiered ? tierNameForOption(option) : "";
       const tierHtml = tier ? `<span class="pill-tier">${escapeHtml(tier)}</span>` : "";
-      const disabled = config.disabled ? " disabled" : "";
-      return `<button class="option-button pill-option${active}" type="button" data-setting-key="${escapeAttr(key)}" data-value="${escapeAttr(option.value)}"${disabled}>${tierHtml}<span class="pill-label">${escapeHtml(option.label)}</span><span class="option-check" aria-hidden="true">✓</span></button>`;
+      const subHtml = option.sub ? `<span class="pill-sub">${escapeHtml(option.sub)}</span>` : "";
+      const reason = option.disabledReason || (config.disabled ? config.disabledReason || "当前模型不支持调整该选项" : "");
+      const disabled = reason
+        ? ` is-disabled" aria-disabled="true" data-disabled-reason="${escapeAttr(reason)}" title="${escapeAttr(reason)}`
+        : "";
+      return `<button class="option-button pill-option${active}${disabled}" type="button" data-setting-key="${escapeAttr(key)}" data-value="${escapeAttr(option.value)}">${tierHtml}<span class="pill-label">${escapeHtml(option.label)}</span>${subHtml}<span class="option-check" aria-hidden="true">✓</span></button>`;
     })
-    .join("");
+    .join("") + (config.hint ? `<p class="setting-hint">${escapeHtml(config.hint)}</p>` : "");
 }
 
 function ratioGlyphForValue(value) {
@@ -1967,14 +2184,44 @@ function renderTileGroup(container, key, options, currentValue) {
     .join("");
 }
 
+// Which option indexes get a tick label under the slider: all of them when
+// there are few, otherwise an even sample that always keeps first and last.
+function durationTickIndexes(count, maxLabels = 6) {
+  if (count <= 0) return [];
+  if (count <= maxLabels) return Array.from({ length: count }, (_, index) => index);
+  const step = Math.ceil((count - 1) / (maxLabels - 1));
+  const indexes = [];
+  for (let index = 0; index < count; index += step) indexes.push(index);
+  const last = count - 1;
+  if (indexes[indexes.length - 1] !== last) {
+    if (last - indexes[indexes.length - 1] < step / 2) indexes.pop();
+    indexes.push(last);
+  }
+  return indexes;
+}
+
 function renderDurationSlider(container, key, options, currentValue) {
   const currentIndex = Math.max(0, options.findIndex((option) => String(option.value) === String(currentValue)));
   const current = options[currentIndex] || { value: currentValue, label: currentValue };
-  const first = options[0] || current;
+  const span = Math.max(1, options.length - 1);
+  const ticks = options.length > 1
+    ? durationTickIndexes(options.length)
+        .map((index) => {
+          const percent = (index / span) * 100;
+          // keep the label centred under the 18px slider thumb
+          const left = `calc(${percent.toFixed(2)}% + ${(9 - (18 * percent) / 100).toFixed(2)}px)`;
+          return `<span class="duration-tick${index === currentIndex ? " is-current" : ""}" data-tick-index="${index}" style="left:${left}">${escapeHtml(options[index].label)}</span>`;
+        })
+        .join("")
+    : "";
+  const fixedReason = options.length <= 1 ? "当前模型 / 素材组合只支持固定时长" : "";
+  container.title = fixedReason;
   container.innerHTML = `
-    <span class="duration-min">${escapeHtml(first.label)}</span>
-    <input class="duration-slider" type="range" min="0" max="${Math.max(0, options.length - 1)}" step="1" value="${currentIndex}"
-      data-duration-key="${escapeAttr(key)}" aria-label="时长" ${options.length <= 1 ? "disabled" : ""} />
+    <div class="duration-track">
+      <input class="duration-slider" type="range" min="0" max="${Math.max(0, options.length - 1)}" step="1" value="${currentIndex}"
+        data-duration-key="${escapeAttr(key)}" aria-label="时长" ${options.length <= 1 ? "disabled" : ""} />
+      <div class="duration-ticks" aria-hidden="true">${ticks}</div>
+    </div>
     <span class="duration-value">${escapeHtml(current.label)}</span>
   `;
 }
@@ -1984,6 +2231,48 @@ function optionLabelForValue(options, value) {
   return found ? found.label : String(value);
 }
 
+// Summary text of an option: its label plus the real-size sub text if any.
+function optionSummaryLabel(options, value) {
+  const found = options.find((option) => String(option.value) === String(value));
+  if (!found) return String(value).replace(/x/i, "×");
+  return found.sub ? `${found.label} ${found.sub}` : found.label;
+}
+
+// Every setting the user can change shows up here (the block may wrap to two
+// lines; information is never dropped).
+function settingsSummaryParts() {
+  if (state.settings.visualMode === "video") {
+    const modelId = state.settings.videoModel;
+    const duration = effectiveVideoDuration();
+    const parts = [
+      optionLabelForValue(videoAspectOptionsForModel(), effectiveVideoAspectRatio()),
+    ];
+    if (!usesPixelVideoSizeOptions(modelId)) {
+      parts.push(optionSummaryLabel(videoResolutionOptionsWithDims(), effectiveVideoResolution()));
+    }
+    parts.push(duration === -1 ? "自动" : `${duration}s`);
+    parts.push(`风格 ${optionLabelForValue(VIDEO_STYLE_OPTIONS, state.settings.videoStyle)}`);
+    if (!isGrokVideoModel(modelId) && !isDocumentedVeo31Model(modelId)) {
+      parts.push(optionLabelForValue(VIDEO_AUDIO_OPTIONS, String(effectiveVideoAudio())));
+    }
+    parts.push(`${effectiveVideoCount()} 条`);
+    return parts;
+  }
+  const modelId = state.settings.imageModel;
+  const grok = isGrokImagineImageModel(modelId);
+  const parts = [optionLabelForValue(imageAspectOptionsForModel(), effectiveImageAspectRatio())];
+  parts.push(optionSummaryLabel(imageSizeOptionsWithDims(), effectiveImageOutputSize()));
+  if (!isSeedreamModel(modelId) && !grok) {
+    parts.push(`质量 ${optionLabelForValue(imageQualityOptionsForModel(), state.settings.imageQuality)}`);
+  }
+  if (isGptImageModel(modelId)) {
+    parts.push(`背景 ${optionLabelForValue(GPT_IMAGE_BACKGROUND_OPTIONS, gptImageBackgroundValue())}`);
+    parts.push(gptImageOutputFormatValue().toUpperCase());
+  }
+  parts.push(`${modelId === "dall-e-3" ? 1 : state.settings.imageCount} 张`);
+  return parts;
+}
+
 function updateSettingsSummary() {
   if (!els.settingsSummaryBlock) return;
   const isVisual = activeMode === "image";
@@ -1991,24 +2280,9 @@ function updateSettingsSummary() {
   if (!isVisual) return;
   const isVideo = state.settings.visualMode === "video";
   els.settingsSummaryLabel.textContent = isVideo ? "视频设置" : "图片设置";
-  if (isVideo) {
-    const duration = effectiveVideoDuration();
-    const parts = [
-      optionLabelForValue(videoAspectOptionsForModel(), effectiveVideoAspectRatio()),
-      optionLabelForValue(videoResolutionOptionsForModel(), effectiveVideoResolution()),
-      duration === -1 ? "自动" : `${duration}s`,
-    ];
-    els.settingsSummaryText.textContent = parts.join(" · ");
-  } else {
-    const parts = [
-      optionLabelForValue(imageAspectOptionsForModel(), effectiveImageAspectRatio()),
-      optionLabelForValue(imageSizeOptionsForModel(), effectiveImageOutputSize()),
-    ];
-    if (isGptImageModel(state.settings.imageModel)) {
-      parts.push(gptImageOutputFormatValue().toUpperCase());
-    }
-    els.settingsSummaryText.textContent = parts.join(" · ");
-  }
+  const text = settingsSummaryParts().join(" · ");
+  els.settingsSummaryText.textContent = text;
+  els.settingsSummaryText.title = text;
 }
 
 function applySettingsPopoverVisibility() {
@@ -2563,22 +2837,27 @@ function effectiveVideoDurationForValue(value) {
   return clampNumber(value, 1, 30, 5);
 }
 
+// Record search: title OR any prompt text inside the session (visual tasks /
+// chat messages), case-insensitive.
+function sessionMatchesQuery(session, query, isVisual, tasks = state.visualTasks) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return true;
+  if ((session.title || "").toLowerCase().includes(q)) return true;
+  if (isVisual) {
+    return (tasks || []).some((task) => task.sessionId === session.id && (task.prompt || "").toLowerCase().includes(q));
+  }
+  return (session.messages || []).some((message) => (message.content || "").toLowerCase().includes(q));
+}
+
+// In-list rename: the title becomes an input inside the record row.
+let renamingSession = null; // { kind: "chat" | "visual", id }
+
 function renderSessions() {
   const query = els.sessionSearch.value.trim().toLowerCase();
   const isVisual = activeMode === "image";
   const source = isVisual ? state.visualSessions : state.sessions;
   const sessions = source
-    .filter((session) => {
-      if (!query) return true;
-      const inTitle = (session.title || "").toLowerCase().includes(query);
-      if (isVisual) {
-        const inTasks = state.visualTasks.some(
-          (task) => task.sessionId === session.id && (task.prompt || "").toLowerCase().includes(query)
-        );
-        return inTitle || inTasks;
-      }
-      return inTitle || (session.messages || []).some((message) => (message.content || "").toLowerCase().includes(query));
-    })
+    .filter((session) => sessionMatchesQuery(session, query, isVisual))
     .sort((a, b) => {
       if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
       return (b.updatedAt || 0) - (a.updatedAt || 0);
@@ -2602,16 +2881,109 @@ function renderSessions() {
     empty.textContent = isVisual ? "没有匹配的创作记录" : "没有匹配的对话";
     els.sessionList.appendChild(empty);
   }
+  focusRenameInput();
+}
+
+function focusRenameInput() {
+  if (!renamingSession) return;
+  const input = els.sessionList.querySelector?.(".session-rename-input");
+  if (!input) return;
+  input.focus();
+  input.select();
+}
+
+function startRenameSession(kind, session) {
+  renamingSession = { kind, id: session.id };
+  renderSessions();
+}
+
+function isRenaming(kind, session) {
+  return renamingSession?.kind === kind && renamingSession.id === session.id;
+}
+
+function commitSessionRename(kind, session, value) {
+  renamingSession = null;
+  const before = session.title;
+  if (kind === "visual") {
+    session.title = String(value || "").trim() || "新的视觉创作";
+    session.updatedAt = Date.now();
+    saveState();
+    renderSessions();
+  } else {
+    session.title = String(value || "").trim() || "新的会话";
+    updateSession(session);
+    renderSessions();
+  }
+  if (session.title !== before) showToast("已重命名");
+}
+
+function cancelSessionRename() {
+  renamingSession = null;
+  renderSessions();
+}
+
+function renameInputNode(kind, session, fallbackTitle) {
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "session-rename-input";
+  input.value = session.title || fallbackTitle;
+  input.maxLength = 80;
+  input.setAttribute("aria-label", "会话名称");
+  let finished = false;
+  const finish = (action) => {
+    if (finished) return;
+    finished = true;
+    action();
+  };
+  input.addEventListener("click", (event) => event.stopPropagation());
+  input.addEventListener("keydown", (event) => {
+    event.stopPropagation();
+    if (event.isComposing) return;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      finish(() => commitSessionRename(kind, session, input.value));
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      finish(cancelSessionRename);
+    }
+  });
+  input.addEventListener("blur", () => finish(() => commitSessionRename(kind, session, input.value)));
+  return input;
+}
+
+const LOADABLE_IMAGE_SRC = /^(data:image\/|blob:|https?:\/\/)/i;
+
+// Summary of a visual session for its record row: first work thumbnail
+// (earliest image with a loadable source) and which work types it holds.
+function visualSessionPreview(session, tasks = state.visualTasks) {
+  const own = (tasks || [])
+    .filter((task) => task.sessionId === session.id)
+    .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  const types = new Set(own.map((task) => (task.type === "video" ? "video" : "image")));
+  let thumbSrc = "";
+  for (const task of own) {
+    if (task.type === "video") continue;
+    const src = (task.media || []).find((item) => typeof item === "string" && LOADABLE_IMAGE_SRC.test(item));
+    if (src) {
+      thumbSrc = src;
+      break;
+    }
+  }
+  const badge = types.size > 1 ? "混合" : types.has("video") ? "视频" : types.has("image") ? "图片" : "";
+  return { count: own.length, thumbSrc, badge, firstType: own[0]?.type === "video" ? "video" : "image" };
 }
 
 function renderVisualSessionItem(session) {
   const item = document.createElement("div");
-  item.className = `session-item${session.id === activeVisualSessionId && activeMode === "image" ? " active" : ""}`;
+  const renaming = isRenaming("visual", session);
+  const armed = deleteArmed === session.id;
+  item.className = `session-item${session.id === activeVisualSessionId && activeMode === "image" ? " active" : ""}${armed ? " menu-open" : ""}`;
   item.setAttribute("role", "button");
   item.setAttribute("tabindex", "0");
   item.setAttribute("aria-label", session.title || "新的视觉创作");
 
   const selectSession = () => {
+    if (renamingSession) return;
     activeMode = "image";
     activeVisualSessionId = session.id;
     if (session.lastVisualMode) state.settings.visualMode = session.lastVisualMode;
@@ -2621,41 +2993,56 @@ function renderVisualSessionItem(session) {
   };
   item.addEventListener("click", selectSession);
   item.addEventListener("keydown", (event) => {
+    if (event.target !== item) return;
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       selectSession();
     }
   });
 
-  const taskCount = state.visualTasks.filter((task) => task.sessionId === session.id).length;
-  const lastType = session.lastVisualMode === "video" ? "video" : "image";
+  const preview = visualSessionPreview(session);
   const text = rowTextBlock(
     session.title || "新的视觉创作",
-    `${taskCount} 件作品 · ${formatTime(session.updatedAt)}`
+    `${preview.count} 件作品 · ${formatTime(session.updatedAt)}`,
+    preview.badge,
+    renaming ? renameInputNode("visual", session, "新的视觉创作") : null
   );
   item.classList.add("has-thumb");
-  item.appendChild(rowThumb(lastType === "video" ? "▶" : "▦"));
+  const thumb = rowThumb(preview.thumbSrc ? "" : preview.firstType === "video" && preview.count ? "▶" : "▦");
+  if (!preview.count) thumb.classList.add("is-placeholder");
+  if (preview.thumbSrc) {
+    const img = document.createElement("img");
+    img.className = "row-thumb-img";
+    img.alt = "";
+    img.src = preview.thumbSrc;
+    img.addEventListener("error", () => {
+      img.remove?.();
+      thumb.textContent = "▦";
+    });
+    thumb.appendChild(img);
+  }
+  item.appendChild(thumb);
 
   const actions = document.createElement("div");
   actions.className = "session-actions";
-  actions.appendChild(tinyButton(session.pinned ? "★" : "☆", session.pinned ? "取消置顶" : "置顶", (event) => {
+  actions.appendChild(menuAction(session.pinned ? "★" : "☆", session.pinned ? "取消置顶" : "置顶", (event) => {
     event.stopPropagation();
     session.pinned = !session.pinned;
     session.updatedAt = Date.now();
     saveState();
     renderSessions();
   }));
-  actions.appendChild(tinyButton("✎", "重命名", (event) => {
+  actions.appendChild(menuAction("✎", "重命名", (event) => {
     event.stopPropagation();
-    renameVisualSession(session);
+    startRenameSession("visual", session);
   }));
-  actions.appendChild(tinyButton("×", "删除", (event) => {
+  actions.appendChild(menuAction(armed ? "!" : "×", armed ? "确认删除？" : "删除", (event) => {
     event.stopPropagation();
     deleteVisualSession(session.id);
-  }));
+  }, armed ? "is-armed" : "danger"));
 
   item.appendChild(text);
-  item.appendChild(sessionActionsMenu(actions));
+  item.appendChild(sessionActionsMenu(actions, armed));
   return item;
 }
 
@@ -2670,16 +3057,30 @@ function rowThumb(content) {
   return thumb;
 }
 
-function rowTextBlock(title, meta) {
+// `badge` (optional) is a small type tag next to the title; `titleNode`
+// (optional) replaces the plain title, e.g. an inline rename input.
+function rowTextBlock(title, meta, badge = "", titleNode = null) {
   const block = document.createElement("div");
   block.className = "row-text";
-  const titleNode = document.createElement("div");
-  titleNode.className = "session-title row-title";
-  titleNode.textContent = title;
+  const line = document.createElement("div");
+  line.className = "row-title-line";
+  const node = titleNode || document.createElement("div");
+  if (!titleNode) {
+    node.className = "session-title row-title";
+    node.textContent = title;
+    node.title = title;
+  }
+  line.appendChild(node);
+  if (badge) {
+    const tag = document.createElement("span");
+    tag.className = `type-badge type-badge-${badge === "视频" ? "video" : badge === "混合" ? "mixed" : "image"}`;
+    tag.textContent = badge;
+    line.appendChild(tag);
+  }
   const metaNode = document.createElement("div");
   metaNode.className = "row-meta";
   metaNode.textContent = meta;
-  block.appendChild(titleNode);
+  block.appendChild(line);
   block.appendChild(metaNode);
   return block;
 }
@@ -2704,12 +3105,15 @@ function groupSessions(sessions) {
 
 function renderSessionItem(session) {
   const button = document.createElement("div");
-  button.className = `session-item${session.id === activeSessionId && activeMode === "chat" ? " active" : ""}`;
+  const renaming = isRenaming("chat", session);
+  const armed = deleteArmed === session.id;
+  button.className = `session-item${session.id === activeSessionId && activeMode === "chat" ? " active" : ""}${armed ? " menu-open" : ""}`;
   button.setAttribute("role", "button");
   button.setAttribute("tabindex", "0");
   button.setAttribute("aria-label", session.title || "新的会话");
 
   const selectSession = () => {
+    if (renamingSession) return;
     activeMode = "chat";
     activeSessionId = session.id;
     closeMobileSidebar();
@@ -2719,6 +3123,7 @@ function renderSessionItem(session) {
 
   button.addEventListener("click", selectSession);
   button.addEventListener("keydown", (event) => {
+    if (event.target !== button) return;
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       selectSession();
@@ -2727,37 +3132,40 @@ function renderSessionItem(session) {
 
   const text = rowTextBlock(
     session.title || "新的会话",
-    `${(session.messages || []).length} 条消息 · ${formatTime(session.updatedAt)}`
+    `${(session.messages || []).length} 条消息 · ${formatTime(session.updatedAt)}`,
+    "",
+    renaming ? renameInputNode("chat", session, "新的会话") : null
   );
   button.classList.add("has-thumb");
   button.appendChild(rowThumb("✦"));
 
   const actions = document.createElement("div");
   actions.className = "session-actions";
-  actions.appendChild(tinyButton(session.pinned ? "★" : "☆", session.pinned ? "取消置顶" : "置顶", (event) => {
+  actions.appendChild(menuAction(session.pinned ? "★" : "☆", session.pinned ? "取消置顶" : "置顶", (event) => {
     event.stopPropagation();
     session.pinned = !session.pinned;
     if (session.pinned) session.pinnedAt = Date.now();
     updateSession(session);
     renderSessions();
   }));
-  actions.appendChild(tinyButton("✎", "重命名", (event) => {
+  actions.appendChild(menuAction("✎", "重命名", (event) => {
     event.stopPropagation();
-    renameSession(session);
+    startRenameSession("chat", session);
   }));
-  actions.appendChild(tinyButton(deleteArmed === session.id ? "!" : "×", deleteArmed === session.id ? "再次点击删除" : "删除", (event) => {
+  actions.appendChild(menuAction(armed ? "!" : "×", armed ? "确认删除？" : "删除", (event) => {
     event.stopPropagation();
     deleteSession(session.id);
-  }));
+  }, armed ? "is-armed" : "danger"));
 
   button.appendChild(text);
-  button.appendChild(sessionActionsMenu(actions));
+  button.appendChild(sessionActionsMenu(actions, armed));
   return button;
 }
 
-function sessionActionsMenu(actions) {
+function sessionActionsMenu(actions, open = false) {
   const menu = document.createElement("details");
   menu.className = "session-menu";
+  if (open) menu.open = true;
   menu.addEventListener("click", (event) => event.stopPropagation());
   menu.addEventListener("toggle", () => {
     menu.closest(".session-item")?.classList.toggle("menu-open", menu.open);
@@ -2771,63 +3179,69 @@ function sessionActionsMenu(actions) {
   return menu;
 }
 
-function tinyButton(text, title, onClick) {
+// Menu entry with an icon AND a text label (置顶 / 重命名 / 删除).
+function menuAction(icon, label, onClick, extraClass = "") {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "tiny-action";
-  button.textContent = text;
-  button.title = title;
-  button.setAttribute("aria-label", title);
+  button.className = `tiny-action session-menu-item${extraClass ? ` ${extraClass}` : ""}`;
+  const iconNode = document.createElement("span");
+  iconNode.className = "session-menu-icon";
+  iconNode.setAttribute("aria-hidden", "true");
+  iconNode.textContent = icon;
+  const labelNode = document.createElement("span");
+  labelNode.className = "session-menu-label";
+  labelNode.textContent = label;
+  button.appendChild(iconNode);
+  button.appendChild(labelNode);
+  button.title = label;
+  button.setAttribute("aria-label", label);
   button.addEventListener("click", onClick);
   return button;
 }
 
-function renameSession(session) {
-  const next = window.prompt("会话名称", session.title || "新的会话");
-  if (next === null) return;
-  session.title = next.trim() || "新的会话";
-  updateSession(session);
+// In-site two-step delete: first click arms the item ("确认删除？", the menu
+// stays open), a second click within 2.4s deletes. No window.confirm.
+function armDelete(id) {
+  deleteArmed = id;
   renderSessions();
+  setTimeout(() => {
+    if (deleteArmed === id) {
+      deleteArmed = null;
+      renderSessions();
+    }
+  }, 2400);
 }
 
 function deleteSession(id) {
   if (deleteArmed !== id) {
-    deleteArmed = id;
-    renderSessions();
-    setTimeout(() => {
-      if (deleteArmed === id) {
-        deleteArmed = null;
-        renderSessions();
-      }
-    }, 2400);
+    armDelete(id);
     return;
   }
   state.sessions = state.sessions.filter((session) => session.id !== id);
+  promptDrafts.delete(`c:${id}`);
   if (!state.sessions.length) createSession();
   if (activeSessionId === id) activeSessionId = state.sessions[0].id;
   deleteArmed = null;
   saveState();
   render();
-}
-
-function renameVisualSession(session) {
-  const next = window.prompt("视觉创作名称", session.title || "新的视觉创作");
-  if (next === null) return;
-  session.title = next.trim() || "新的视觉创作";
-  session.updatedAt = Date.now();
-  saveState();
-  render();
+  showToast("对话已删除");
 }
 
 function deleteVisualSession(id) {
   const session = state.visualSessions.find((item) => item.id === id);
-  if (!session || !window.confirm(`确认删除视觉创作“${session.title || "新的视觉创作"}”？`)) return;
+  if (!session) return;
+  if (deleteArmed !== id) {
+    armDelete(id);
+    return;
+  }
   const removedTaskIds = state.visualTasks.filter((task) => task.sessionId === id).map((task) => task.id);
   removedTaskIds.forEach(cancelImageRequest);
   state.visualSessions = state.visualSessions.filter((session) => session.id !== id);
   state.visualTasks = state.visualTasks.filter((task) => task.sessionId !== id);
   removedTaskIds.forEach((taskId) => void deleteVisualMediaCacheForTask(taskId));
+  promptDrafts.delete(`v:${id}`);
   deleteArmed = null;
+  showToast("创作记录已删除");
   if (!state.visualSessions.length) {
     createVisualSession();
     return;
@@ -2872,6 +3286,8 @@ function renderChatJumpList(messages) {
   els.chatJumpList.innerHTML = "";
   if (els.chatJumpCount) els.chatJumpCount.textContent = `${items.length} 轮`;
   if (els.chatJumpEmpty) els.chatJumpEmpty.hidden = items.length > 0;
+  // No messages: the rail collapses to a single hint line instead of a tall empty card.
+  els.chatJumpList.closest?.(".chat-records-rail")?.classList.toggle("is-empty", items.length === 0);
   items.forEach((item) => {
     const button = document.createElement("button");
     button.type = "button";
@@ -3820,6 +4236,29 @@ function geminiNativeImageSize() {
   if (quality === "low" || quality === "standard") return "1K";
   const dimensions = String(effectiveImageSize()).split("x").map(Number);
   return Math.max(...dimensions) > 1024 ? "2K" : "1K";
+}
+
+// ---- #2 incompatible combinations: grey out + explain, never auto-change ----
+const TRANSPARENT_JPEG_REASON = "透明背景不支持 JPEG，请选 PNG 或 WebP";
+const JPEG_TRANSPARENT_REASON = "JPEG 不支持透明背景，请先把输出格式改为 PNG 或 WebP";
+
+function gptImageFormatOptions() {
+  const transparent = gptImageBackgroundValue() === "transparent";
+  return GPT_IMAGE_FORMAT_OPTIONS.map((option) =>
+    option.value === "jpeg" && transparent ? { ...option, disabledReason: TRANSPARENT_JPEG_REASON } : option
+  );
+}
+
+function gptImageBackgroundOptions() {
+  // The user's own format choice is kept as-is: if it is JPEG, "透明" is the
+  // option that becomes unavailable (unless transparent is already active).
+  const jpegChosen = String(state.settings.imageOutputFormat || "").toLowerCase() === "jpeg";
+  const current = gptImageBackgroundValue();
+  return GPT_IMAGE_BACKGROUND_OPTIONS.map((option) =>
+    option.value === "transparent" && jpegChosen && current !== "transparent"
+      ? { ...option, disabledReason: JPEG_TRANSPARENT_REASON }
+      : option
+  );
 }
 
 function gptImageBackgroundValue() {
@@ -4894,6 +5333,7 @@ function renderImages() {
     els.queueRunningCount.textContent = String(tasks.filter((task) => task.status === "running").length);
   }
   els.imageEmpty.hidden = tasks.length > 0;
+  if (els.visualEmptyTitle) els.visualEmptyTitle.textContent = visualMode === "video" ? "开始一次视频创作" : "开始一次图片创作";
   els.visualEmptyText.textContent =
     visualMode === "video"
       ? isGrokVideoModel(state.settings.videoModel)
@@ -5179,11 +5619,11 @@ function buildQueueGroups(tasks, batches) {
       });
       groups[idx].tasks.push(task);
     });
-  const hasMarkers = markers.length > 0;
-  return groups
-    .filter((group) => group.tasks.length || group.marker)
-    .reverse()
-    .map((group) => ({ ...group, showDivider: hasMarkers }));
+  // A batch without tasks yet is hidden (no lonely divider); it appears with
+  // its first task. Dividers show once any visible batch is a marked one.
+  const visible = groups.filter((group) => group.tasks.length).reverse();
+  const showDivider = visible.some((group) => group.marker);
+  return visible.map((group) => ({ ...group, showDivider }));
 }
 
 function renderQueuePanel(tasks, batches) {
@@ -5291,10 +5731,10 @@ async function retryVisualTask(taskId) {
   activeMode = "image";
   activeVisualSessionId = task.sessionId || activeVisualSessionId;
   applyVisualTaskSettings(task);
-  els.promptInput.value = task.prompt || "";
-  autoResizePrompt();
   saveState();
   render();
+  els.promptInput.value = task.prompt || "";
+  autoResizePrompt();
 
   const needsReferences = Array.isArray(task.references) && task.references.length > 0;
   const hasReferences = task.type === "image" ? draftMedia.imageReferences.length > 0 : videoDraftReferenceCount() > 0;
@@ -5525,6 +5965,8 @@ function clearVisualTasks() {
   removedTaskIds.forEach((taskId) => void deleteVisualMediaCacheForTask(taskId));
   saveState();
   renderImages();
+  renderSessions();
+  showToast(removedTaskIds.length ? `已清空当前会话的 ${removedTaskIds.length} 件作品` : "当前会话没有可清空的作品");
 }
 
 function renderVisualMeta() {
@@ -5668,14 +6110,23 @@ function renderDraftMediaTray() {
   }
   const limit = isVideoMode ? 15 : 9;
   if (els.referencePanel) els.referencePanel.hidden = false;
-  if (els.referenceCount) els.referenceCount.textContent = `${items.length} / ${limit}`;
-  if (els.referenceSlotHint) els.referenceSlotHint.hidden = !isVideoMode;
+  if (els.referenceCount) els.referenceCount.textContent = `${items.length} / ${limit} · 最多 ${limit} 个`;
+  if (els.referenceSlotHint) {
+    els.referenceSlotHint.hidden = false;
+    els.referenceSlotHint.textContent = isVideoMode
+      ? "先点 ＋ 上传，再点缩略图指定用途"
+      : "点 ＋ 上传参考图，可用于图生图";
+  }
   els.draftMediaTray.hidden = false;
+  const purposes = isVideoMode ? availableImagePurposes() : [];
+  if (selectedDraftMedia && !findDraftMedia(selectedDraftMedia.key, selectedDraftMedia.id)) selectedDraftMedia = null;
   const mediaCells = items
     .map(({ key, label, item }) => {
       const isImage = item.mime.startsWith("image/");
+      const pickable = isImage && purposes.some((purpose) => purpose.key === key);
+      const selected = pickable && selectedDraftMedia?.key === key && selectedDraftMedia?.id === item.id;
       return `
-        <div class="draft-media" title="${escapeAttr(`${label} · ${item.name}`)}">
+        <div class="draft-media${pickable ? " is-pickable" : ""}${selected ? " is-selected" : ""}"${pickable ? ` role="button" tabindex="0" aria-pressed="${selected}" data-pick-media="${escapeAttr(key)}" data-media-id="${escapeAttr(item.id)}"` : ""} title="${escapeAttr(`${label} · ${item.name}${pickable ? "（点击指定用途）" : ""}`)}">
           ${isImage ? `<img src="${escapeAttr(item.dataUrl)}" alt="">` : `<span class="draft-file-icon">${escapeHtml(fileTypeLabel(item.mime))}</span>`}
           <span class="draft-media-badge">${escapeHtml(label)}</span>
           <button type="button" aria-label="移除" data-remove-media="${escapeAttr(key)}" data-media-id="${escapeAttr(item.id)}">×</button>
@@ -5687,6 +6138,65 @@ function renderDraftMediaTray() {
     ? `<button type="button" class="reference-add" data-add-media="${isVideoMode ? "video" : "image"}" aria-label="添加参考素材">＋</button>`
     : "";
   els.draftMediaTray.innerHTML = mediaCells + addCell;
+  renderPurposeMenu(purposes);
+}
+
+// ---- Reference purposes (video mode): which image acts as 参考图 / 首帧 / 尾帧 ----
+let selectedDraftMedia = null; // { key, id } — thumbnail whose purpose is being picked
+
+function findDraftMedia(key, id) {
+  if (Array.isArray(draftMedia[key])) return draftMedia[key].find((item) => item.id === id) || null;
+  return draftMedia[key]?.id === id ? draftMedia[key] : null;
+}
+
+// Purposes that are valid for the current video model (a purpose whose upload
+// button is hidden for this model is not offered). Models with exclusive
+// first/last-frame vs reference rules keep their upload-time behaviour only.
+function availableImagePurposes() {
+  const modelId = state.settings.videoModel;
+  if (isDocumentedVeo31Model(modelId) || isKlingModel(modelId) || isGrokVideoModel(modelId)) return [];
+  const purposes = [];
+  if (els.uploadImageRefButton && !els.uploadImageRefButton.hidden) purposes.push({ key: "videoImages", label: "参考图" });
+  if (els.uploadFirstFrameButton && !els.uploadFirstFrameButton.hidden) purposes.push({ key: "firstFrame", label: "首帧" });
+  if (els.uploadLastFrameButton && !els.uploadLastFrameButton.hidden) purposes.push({ key: "lastFrame", label: "尾帧" });
+  return purposes;
+}
+
+function renderPurposeMenu(purposes) {
+  const menu = els.referencePurposeMenu;
+  if (!menu) return;
+  if (!selectedDraftMedia || !purposes.length) {
+    menu.hidden = true;
+    menu.innerHTML = "";
+    return;
+  }
+  menu.hidden = false;
+  menu.innerHTML = `<span class="purpose-title">用途</span>${purposes
+    .map((purpose) => {
+      const active = purpose.key === selectedDraftMedia.key;
+      return `<button type="button" class="purpose-option${active ? " active" : ""}" aria-pressed="${active}" data-purpose-key="${escapeAttr(purpose.key)}">${active ? "✓ " : ""}${escapeHtml(purpose.label)}</button>`;
+    })
+    .join("")}`;
+}
+
+function assignDraftPurpose(targetKey) {
+  const from = selectedDraftMedia;
+  if (!from || from.key === targetKey) return;
+  const item = findDraftMedia(from.key, from.id);
+  if (!item) return;
+  if (Array.isArray(draftMedia[from.key])) draftMedia[from.key] = draftMedia[from.key].filter((entry) => entry.id !== from.id);
+  else draftMedia[from.key] = null;
+  if (targetKey === "videoImages") {
+    draftMedia.videoImages = uniqueMedia([...draftMedia.videoImages, item]).slice(0, 6);
+  } else {
+    const displaced = draftMedia[targetKey];
+    draftMedia[targetKey] = item;
+    if (displaced) draftMedia.videoImages = uniqueMedia([...draftMedia.videoImages, displaced]).slice(0, 6);
+  }
+  selectedDraftMedia = { key: targetKey, id: item.id };
+  const label = { videoImages: "参考图", firstFrame: "首帧", lastFrame: "尾帧" }[targetKey];
+  renderDraftMediaTray();
+  showToast(`已设为${label}`);
 }
 
 function removeDraftMedia(key, id) {
@@ -5834,6 +6344,7 @@ function syncSettingsForm() {
   fillGroupedModelSelect(els.videoModel, "video", settings.videoModel);
   els.baseUrl.value = settings.baseUrl || "";
   els.apiKey.value = settings.apiKey || "";
+  renderConnectionStatus();
   els.chatModel.value = settings.chatModel || "";
   els.imageModel.value = settings.imageModel || "";
   els.videoModel.value = settings.videoModel || "";
@@ -5946,6 +6457,14 @@ function pickModelFromPopover(modelId) {
 }
 
 function saveSettingsFromForm(options = {}) {
+  try {
+    saveSettingsFromFormUnsafe(options);
+  } catch (error) {
+    showToast(`保存设置失败：${normalizeError(error)}`, true);
+  }
+}
+
+function saveSettingsFromFormUnsafe(options = {}) {
   const values = settingsFormValues();
   state.settings = {
     ...state.settings,
@@ -5979,7 +6498,7 @@ function saveSettingsFromForm(options = {}) {
   render();
   settingsFormSnapshot = serializeSettingsForm();
   hideUnsavedSettingsPrompt();
-  showToast("已保存");
+  showToast("设置已保存");
   if (options.closeAfterSave) closeSettingsDirect();
 }
 
@@ -5996,7 +6515,7 @@ async function fetchModels() {
   if (!validateSettingsConnection(connection)) return;
   const trigger = formOpen ? els.reloadModels : null;
   setSettingsActionLoading(trigger, true, "获取中");
-  setConnection("测试中", "", "正在通过 /v1/models 获取模型列表...");
+  setConnection("testing", "正在通过 /v1/models 获取模型列表...");
   try {
     const response = await fetch(apiUrlForBase(connection.baseUrl, "/v1/models"), {
       headers: authHeadersForKey(connection.apiKey, false),
@@ -6030,12 +6549,12 @@ async function fetchModels() {
       if (draft) refreshSettingsModelSelects(draft);
       else syncSettingsForm();
     }
-    setConnection("连接成功", "ok", `已通过 /v1/models 获取 ${models.length || 0} 个模型。`);
+    setConnection("ok", `已通过 /v1/models 获取 ${models.length || 0} 个模型。`);
     showToast("模型列表已更新");
   } catch (error) {
     const message = normalizeError(error);
-    setConnection("连接失败", "error", message);
-    showToast(message, true);
+    setConnection("error", message);
+    showToast(`获取模型失败：${message}`, true);
   } finally {
     setSettingsActionLoading(trigger, false);
   }
@@ -6045,7 +6564,7 @@ async function testConnection() {
   const connection = settingsConnectionValues();
   if (!validateSettingsConnection(connection)) return;
   setSettingsActionLoading(els.testConnection, true, "测试中");
-  setConnection("测试中", "", "正在验证 /v1/models；不会调用推理模型...");
+  setConnection("testing", "正在验证 /v1/models；不会调用推理模型...");
   try {
     const response = await fetch(apiUrlForBase(connection.baseUrl, "/v1/models"), {
       headers: authHeadersForKey(connection.apiKey, false),
@@ -6053,9 +6572,11 @@ async function testConnection() {
     if (!response.ok) throw new Error(await responseError(response));
     const data = await response.json();
     const count = Array.isArray(data?.data) ? data.data.length : 0;
-    setConnection("连接成功", "ok", `服务响应正常，可读取 ${count} 个模型；本测试未调用任何推理模型。`);
+    setConnection("ok", `服务响应正常，可读取 ${count} 个模型；本测试未调用任何推理模型。`);
+    showToast(`连接成功，可读取 ${count} 个模型`);
   } catch (error) {
-    setConnection("连接失败", "error", `${normalizeError(error)}；测试结果不影响保存，可在“模型设置”切换已有模型。`);
+    setConnection("error", `${normalizeError(error)}；测试结果不影响保存，可在“模型设置”切换已有模型。`);
+    showToast(`连接失败：${normalizeError(error)}`, true);
   } finally {
     setSettingsActionLoading(els.testConnection, false);
   }
@@ -6077,7 +6598,7 @@ function settingsConnectionValues() {
 function validateSettingsConnection(connection) {
   if (connection.baseUrl && connection.apiKey) return true;
   const message = "请填写 API Base URL 和 API Key";
-  setConnection("连接失败", "error", message);
+  setConnection("error", message);
   showToast(message, true);
   return false;
 }
@@ -6111,9 +6632,15 @@ function setSettingsActionLoading(button, loading, loadingText = "处理中") {
   button.classList.toggle("is-loading", loading);
 }
 
-function setConnection(text, type = "", detail = "") {
-  els.connectionState.textContent = text;
-  els.connectionState.className = `status-pill ${type}`.trim();
+// status: "testing" | "ok" | "error" | "untested". Wording comes from
+// CONNECTION_LABELS so the pill and the sidebar can never disagree.
+function setConnection(status, detail = "") {
+  connectionResult = {
+    status,
+    fingerprint: connectionFingerprint(settingsConnectionValues()),
+  };
+  const type = status === "ok" ? "ok" : status === "error" ? "error" : "";
+  renderConnectionStatus();
   if (els.connectionDetail) {
     els.connectionDetail.textContent = detail;
     els.connectionDetail.className = `connection-detail ${type}`.trim();
@@ -6581,24 +7108,37 @@ function findNestedValue(value, predicate) {
   return "";
 }
 
+function updatePromptCounter() {
+  if (!els.promptCounter) return;
+  const visual = activeMode === "image";
+  els.promptCounter.hidden = !visual;
+  els.promptCounter.textContent = `${Array.from(els.promptInput.value || "").length} 字`;
+}
+
 function autoResizePrompt() {
+  updatePromptCounter();
   els.promptInput.style.height = "auto";
   els.promptInput.style.height = `${Math.min(220, Math.max(54, els.promptInput.scrollHeight))}px`;
 }
 
 function exportData() {
-  const payload = {
-    version: EXPORT_VERSION,
-    exportedAt: new Date().toISOString(),
-    state,
-  };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `deep-iamge2-${new Date().toISOString().slice(0, 10)}.json`;
-  link.click();
-  URL.revokeObjectURL(url);
+  try {
+    const payload = {
+      version: EXPORT_VERSION,
+      exportedAt: new Date().toISOString(),
+      state,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `deep-iamge2-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showToast("已导出数据文件");
+  } catch (error) {
+    showToast(`导出失败：${normalizeError(error)}`, true);
+  }
 }
 
 async function importData(event) {
@@ -6616,15 +7156,32 @@ async function importData(event) {
     saveState();
     render();
     if (els.settingsDialog?.open) settingsFormSnapshot = serializeSettingsForm();
-    showToast("已导入");
+    showToast("已导入数据");
   } catch {
     showToast("导入失败：JSON 格式无效", true);
   }
 }
 
+let clearAllArmedTimer = null;
+
+// Two-step in-site confirm on the button itself (no window.confirm).
 function clearAllData() {
-  if (!window.confirm("确认清空本地配置、会话和视觉任务历史？")) return;
+  const button = els.clearAll;
+  if (!clearAllArmedTimer) {
+    if (button) {
+      button.dataset.idleText = button.textContent;
+      button.textContent = "再点一次确认清空";
+      button.classList.add("is-armed");
+    }
+    showToast("再点一次「清空数据」确认，将清除本地配置、会话和作品历史", true);
+    clearAllArmedTimer = setTimeout(disarmClearAll, 4000);
+    return;
+  }
+  disarmClearAll();
   void clearVisualMediaCache();
+  promptDrafts.clear();
+  promptDraftKey = null;
+  connectionResult = { status: "untested", fingerprint: "" };
   state = createInitialState();
   activeMode = state.activeMode;
   activeSessionId = state.activeSessionId;
@@ -6634,19 +7191,48 @@ function clearAllData() {
   saveState();
   render();
   if (els.settingsDialog?.open) settingsFormSnapshot = serializeSettingsForm();
+  showToast("已清空本地数据");
 }
 
+function disarmClearAll() {
+  clearTimeout(clearAllArmedTimer);
+  clearAllArmedTimer = null;
+  const button = els.clearAll;
+  if (!button) return;
+  if (button.dataset.idleText) button.textContent = button.dataset.idleText;
+  delete button.dataset.idleText;
+  button.classList.remove("is-armed");
+}
+
+// The toast is a manual popover so it renders in the top layer: it stays
+// visible above the modal settings <dialog> (a plain fixed element would be
+// hidden behind it). Falls back to plain show/hide without Popover API.
 function showToast(message, isError = false) {
   clearTimeout(toastTimer);
-  els.toast.textContent = message;
-  els.toast.classList.toggle("error", isError);
-  els.toast.hidden = false;
+  const toast = els.toast;
+  toast.textContent = message;
+  toast.classList.toggle("error", isError);
+  toast.hidden = false;
+  if (typeof toast.showPopover === "function") {
+    try {
+      if (!toast.matches(":popover-open")) toast.showPopover();
+    } catch {
+      // already open / unsupported: the fixed-position fallback still shows it
+    }
+  }
   toastTimer = setTimeout(() => {
-    els.toast.hidden = true;
+    if (typeof toast.hidePopover === "function") {
+      try {
+        toast.hidePopover();
+      } catch {
+        // not open
+      }
+    }
+    toast.hidden = true;
   }, isError ? 5200 : 2600);
 }
 
-async function copyText(text) {
+async function copyText(text, successMessage = "已复制") {
   try {
     let copied = false;
     if (navigator.clipboard?.writeText) {
@@ -6669,9 +7255,9 @@ async function copyText(text) {
       input.remove();
       if (!copied) throw new Error("copy unavailable");
     }
-    showToast("已复制");
+    showToast(successMessage);
   } catch {
-    showToast("复制失败", true);
+    showToast("复制失败，请手动选择文本复制", true);
   }
 }
 
@@ -7253,6 +7839,43 @@ if (typeof module !== "undefined" && module.exports) {
     renderQueuePanel,
     renderChatJumpList,
     jumpToChatMessage,
+    renderSessions,
+    summarizeTitle,
+    updateSession,
+    updateVisualSession,
+    sessionMatchesQuery,
+    visualSessionPreview,
+    parseRatioPair,
+    imageTierPixelSize,
+    videoTierPixelSize,
+    imageSizeOptionsWithDims,
+    videoResolutionOptionsWithDims,
+    imageSizeRatioMismatchHint,
+    gptImageFormatOptions,
+    gptImageBackgroundOptions,
+    renderOptionGroup,
+    durationTickIndexes,
+    renderDurationSlider,
+    settingsSummaryParts,
+    modelDisplayName,
+    modelFullName,
+    CONNECTION_LABELS,
+    currentConnectionStatus,
+    setConnection,
+    syncPromptDraft,
+    promptDrafts,
+    setTestMode(mode, chatId, visualId) {
+      activeMode = mode;
+      activeSessionId = chatId;
+      activeVisualSessionId = visualId;
+    },
+    setTestModelRecords(records) {
+      state.modelRecords = records;
+    },
+    setTestSessions(chat, visual) {
+      state.sessions = chat;
+      state.visualSessions = visual;
+    },
     setTestVisualState(sessions, tasks, activeId) {
       state.visualSessions = sessions;
       state.visualTasks = tasks;
@@ -7285,13 +7908,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   resumeVideoPolling();
   resumeImagePolling();
   if (linkedSettingsApplied) {
-    setConnection("已导入 NewAPI 配置", "ok");
+    setConnection("untested", "已导入 NewAPI 配置，正在获取模型列表…");
     setTimeout(() => fetchModels(), 0);
   } else if (parseSub2ApiEmbedParams(window.location)) {
     applySub2ApiEmbedSettings().then((applied) => {
       if (applied) {
         render();
-        setConnection("已导入 Sub2API 配置", "ok");
+        setConnection("untested", "已导入 Sub2API 配置，正在获取模型列表…");
         fetchModels();
       } else if (!state.settings.apiKey) {
         showMissingSetting("请先配置 API Key");
