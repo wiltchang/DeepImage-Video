@@ -169,16 +169,9 @@ test("#7 record rows know their first thumbnail and work-type badge", () => {
   assert.deepEqual([empty.badge, empty.thumbSrc, empty.count], ["", "", 0]);
 });
 
-test("#11 a batch with no tasks yet has no divider; it appears with its first task", () => {
-  const first = [{ id: 1, createdAt: 10 }];
-  let groups = app.buildQueueGroups(first, [{ id: "m", at: 100 }]);
-  assert.equal(groups.length, 1, "empty new batch is hidden");
-  assert.equal(groups[0].showDivider, false, "single unmarked batch needs no divider");
-  groups = app.buildQueueGroups([...first, { id: 2, createdAt: 120 }], [{ id: "m", at: 100 }]);
-  assert.equal(groups.length, 2);
-  assert.ok(groups.every((group) => group.showDivider));
-  assert.deepEqual(groups.map((group) => group.index), [1, 0]);
-  assert.equal(app.buildQueueGroups([], [{ id: "m", at: 100 }]).length, 0);
+test("#11 (r16) queue is flat: no batch dividers, batches ignored", () => {
+  assert.deepEqual(app.buildQueueGroups([{ id: 1, createdAt: 10 }, { id: 2, createdAt: 120 }]).map((t) => t.id), [2, 1]);
+  assert.equal(app.buildQueueGroups([]).length, 0);
 });
 
 test("#12 model chips prefer the display name and keep the id for the tooltip", () => {

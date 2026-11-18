@@ -5583,14 +5583,6 @@ summary:active,
 }
 
 /* ---------- Left menu: new chat / new creation ---------- */
-.sidebar-menu-actions {
-  margin-top: 4px;
-}
-
-.menu-actions .menu-icon {
-  font-weight: 700;
-}
-
 /* ---------- Sidebar records stay flat (not a floating card) ---------- */
 .sidebar-records.panel {
   border: 0;
@@ -6107,7 +6099,7 @@ summary:active,
 
 @media (max-width: 900px) {
   .workspace.visual-workspace {
-    padding-bottom: calc(184px + env(safe-area-inset-bottom));
+    padding-bottom: calc(160px + env(safe-area-inset-bottom));
   }
 }
 
@@ -6215,4 +6207,145 @@ summary:active,
 
 .workspace.visual-workspace .prompt-box {
   min-height: 72px;
+}
+
+/* ---------- r14: compact chat composer (desktop + mobile) ---------- */
+.workspace:not(.visual-workspace) .composer-card {
+  padding: 8px 10px;
+}
+
+.workspace:not(.visual-workspace) .composer-main {
+  padding: 0;
+}
+
+.workspace:not(.visual-workspace) #promptInput {
+  min-height: 44px;
+  max-height: 160px;
+  padding: 6px 4px;
+}
+
+.workspace:not(.visual-workspace) .composer-row {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  padding-top: 4px;
+}
+
+.workspace:not(.visual-workspace) .composer-summary {
+  flex: 0 1 auto;
+  min-width: 0;
+  order: 1;
+}
+
+.workspace:not(.visual-workspace) .quick-controls {
+  order: 2;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.workspace:not(.visual-workspace) .quick-controls .chip {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.workspace:not(.visual-workspace) .summary-label {
+  display: none;
+}
+
+.workspace:not(.visual-workspace) .model-picker-trigger {
+  min-height: 30px;
+  max-width: 200px;
+}
+
+.workspace:not(.visual-workspace) .send-wrap {
+  order: 3;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.workspace:not(.visual-workspace) .send-button {
+  min-height: 32px;
+}
+
+@media (max-width: 900px) {
+  .workspace:not(.visual-workspace) .composer-row {
+    flex-wrap: nowrap;
+    overflow: visible;
+  }
+
+  .workspace:not(.visual-workspace) .model-picker-trigger {
+    width: auto;
+    max-width: 110px;
+  }
+
+  .workspace:not(.visual-workspace) .quick-controls .chip {
+    flex: 0 0 auto;
+    padding: 0 8px;
+  }
+}
+
+/* ---------- r15: mobile bottom bar — model + settings blocks side by side, equal halves ---------- */
+@media (max-width: 900px) {
+  .workspace.visual-workspace .composer-summary {
+    flex-wrap: nowrap;
+    flex: 1 1 100%;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .workspace.visual-workspace .summary-model-block,
+  .workspace.visual-workspace .summary-settings-block {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .workspace.visual-workspace .summary-settings-block .summary-value {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* ---------- r16: records ＋ button, image/video segmented switch ---------- */
+.sidebar-records-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.record-add-button {
+  width: 28px;
+  height: 28px;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.visual-type-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin: 10px 0 4px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-panel-soft);
+}
+
+.visual-type-option {
+  min-height: 30px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--text-main);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.visual-type-option.active {
+  background: var(--bg-panel);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }

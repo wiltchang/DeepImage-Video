@@ -405,9 +405,11 @@ function initElements() {
   [
     "workspace",
     "sidebar",
-    "menuImageMode",
-    "menuVideoMode",
-    "menuChatMode",
+    "menuVisualNav",
+    "menuChatNav",
+    "newRecordBtn",
+    "visualTypeImage",
+    "visualTypeVideo",
     "connectionStatus",
     "sidebarModelSettings",
     "sidebarModelName",
@@ -426,9 +428,6 @@ function initElements() {
     "messages",
     "composerTitle",
     "composerTitleRow",
-    "newSessionBtn",
-    "menuNewChat",
-    "menuNewCreation",
     "sidebarRecordsTitle",
     "sidebarRecordsCount",
     "chatJumpList",
@@ -452,7 +451,6 @@ function initElements() {
     "referencePurposeMenu",
     "promptCounter",
     "visualEmptyTitle",
-    "chatToolbar",
     "chatWebToggle",
     "uploadChatFileButton",
     "chatAttachmentTray",
@@ -1350,42 +1348,17 @@ function createVisualSession(title = "新的视觉创作") {
   return id;
 }
 
-// 新建对话: switch to the language model and open a fresh chat session.
-function newChatFromMenu() {
-  activeMode = "chat";
+// The one and only "new session" entry: the ＋ in the records header. In the
+// visual area it opens a blank visual session (image/video type unchanged); in
+// AI chat it opens a fresh chat session.
+function newRecordFromHeader() {
   closeMobileSidebar();
-  createSession();
-  els.promptInput.focus();
-}
-
-// 新建创作: a blank unified visual session. The generation type (image/video)
-// stays whatever the user is on right now.
-function newCreationFromMenu() {
-  closeMobileSidebar();
-  createVisualSession();
-  els.promptInput.focus();
-}
-
-// "+ 新建队列": start a fresh round inside the current visual session — clear
-// the draft prompt/reference slots and drop a batch marker into the queue.
-// The canvas keeps its works; no session or record entry is created.
-function startNewQueueBatch() {
-  if (activeMode !== "image") return;
-  const session = getActiveVisualSession();
-  if (session) {
-    if (!Array.isArray(session.queueBatches)) session.queueBatches = [];
-    session.queueBatches.push({ id: generateId(), at: Date.now() });
+  if (activeMode === "image") createVisualSession();
+  else {
+    activeMode = "chat";
+    createSession();
   }
-  draftMedia = createEmptyDraftMedia();
-  els.promptInput.value = "";
-  autoResizePrompt();
-  syncImageModeFromReferences();
-  saveState();
-  renderDraftMediaTray();
-  renderVisualMeta();
-  renderImages();
   els.promptInput.focus();
-  showToast("已新建队列：提示词与素材已清空，首个任务提交后会出现批次分隔");
 }
 
 // Auto title: first prompt, whitespace collapsed, cut to ~20 characters.
@@ -1418,23 +1391,27 @@ function updateSession(session) {
 }
 
 function bindEvents() {
-  els.newSessionBtn.addEventListener("click", startNewQueueBatch);
-  els.menuNewChat.addEventListener("click", newChatFromMenu);
-  els.menuNewCreation.addEventListener("click", newCreationFromMenu);
+  els.newRecordBtn.addEventListener("click", newRecordFromHeader);
   els.collapseSidebar.addEventListener("click", () => {
     els.sidebar.classList.toggle("collapsed");
   });
   els.mobileMenu.addEventListener("click", openMobileSidebar);
   els.overlay.addEventListener("click", closeMobileSidebar);
-  els.menuImageMode.addEventListener("click", () => {
+  // Pure navigation: switch area and restore the latest session of that area.
+  els.menuVisualNav.addEventListener("click", () => {
+    closeMobileSidebar();
     setMode("image");
+  });
+  els.menuChatNav.addEventListener("click", () => {
+    closeMobileSidebar();
+    setMode("chat");
+  });
+  els.visualTypeImage.addEventListener("click", () => {
     if (state.settings.visualMode !== "image") setVisualMode("image");
   });
-  els.menuVideoMode.addEventListener("click", () => {
-    setMode("image");
+  els.visualTypeVideo.addEventListener("click", () => {
     if (state.settings.visualMode !== "video") setVisualMode("video");
   });
-  els.menuChatMode.addEventListener("click", () => setMode("chat"));
   els.sidebarModelSettings.addEventListener("click", () => openSettings("models"));
   els.sessionSearch.addEventListener("input", renderSessions);
   els.openSettingsSide.addEventListener("click", () => openSettings("api"));
@@ -1790,6 +1767,19 @@ function renderModes() {
   els.imagePanel.classList.toggle("active", isVisual);
   if (els.sidebarRecords) els.sidebarRecords.hidden = false;
   if (els.sidebarRecordsTitle) els.sidebarRecordsTitle.textContent = isVisual ? "创作记录" : "对话记录";
+  if (els.newRecordBtn) {
+    const label = isVisual ? "新建视觉会话" : "新建聊天会话";
+    els.newRecordBtn.title = label;
+    els.newRecordBtn.setAttribute("aria-label", label);
+  }
+  [
+    [els.visualTypeImage, visualMode === "image"],
+    [els.visualTypeVideo, visualMode === "video"],
+  ].forEach(([btn, on]) => {
+    if (!btn) return;
+    btn.classList.toggle("active", on);
+    btn.setAttribute("aria-pressed", String(on));
+  });
   if (els.composerTitleRow) els.composerTitleRow.hidden = !isVisual;
   closeModelPopover();
   closeSettingsPopover();
@@ -1801,11 +1791,10 @@ function renderModes() {
       : "描述要生成的画面；上传参考图可进行图生图"
     : "输入消息";
   els.sessionSearch.placeholder = isVisual ? "搜索创作记录" : "搜索对话记录";
-  if (els.menuImageMode) {
+  if (els.menuVisualNav) {
     const menuStates = [
-      [els.menuImageMode, isVisual && visualMode === "image"],
-      [els.menuVideoMode, isVisual && visualMode === "video"],
-      [els.menuChatMode, !isVisual],
+      [els.menuVisualNav, isVisual],
+      [els.menuChatNav, !isVisual],
     ];
     menuStates.forEach(([item, active]) => {
       item.classList.toggle("active", active);
@@ -1871,7 +1860,8 @@ function renderControls() {
     && (isDocumentedVeo31FastModel(state.settings.videoModel)
       || usesDeepRouterDocumentedVeo31Compatibility(state.settings.videoModel));
   els.visualToolbar.hidden = !isVisual;
-  els.chatToolbar.hidden = isVisual;
+  els.chatWebToggle.hidden = isVisual;
+  els.uploadChatFileButton.hidden = isVisual;
   els.chatWebToggle.classList.toggle("active", !!state.settings.chatWeb);
   els.chatWebToggle.setAttribute("aria-pressed", String(!!state.settings.chatWeb));
   const contextEnabled = isVisualContextEnabled();
@@ -5342,7 +5332,7 @@ function renderImages() {
       : "输入画面描述，或上传参考图进行图生图。";
 
   reconcileVisualTaskNodes(els.imageGrid, tasks, renderVisualTask);
-  renderQueuePanel(tasks, getActiveVisualSession()?.queueBatches);
+  renderQueuePanel(tasks);
   els.imageGrid.dataset.sessionId = String(activeVisualSessionId || "");
   requestAnimationFrame(() => {
     if (sessionChanged) {
@@ -5603,58 +5593,28 @@ function setViewerZoom(value) {
   els.viewerZoomLabel.textContent = `${Math.round(viewerZoom * 100)}%`;
 }
 
-// Group tasks into queue batches. A "+ 新建队列" marker (at = timestamp) opens a
-// new batch: tasks created at/after it belong to it. Returned newest batch first,
-// tasks newest first inside each batch.
-function buildQueueGroups(tasks, batches) {
-  const markers = [...(Array.isArray(batches) ? batches : [])].sort((a, b) => (a.at || 0) - (b.at || 0));
-  const groups = [{ index: 0, marker: null, tasks: [] }];
-  markers.forEach((marker, i) => groups.push({ index: i + 1, marker, tasks: [] }));
-  [...tasks]
-    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-    .forEach((task) => {
-      let idx = 0;
-      markers.forEach((marker, i) => {
-        if ((task.createdAt || 0) >= (marker.at || 0)) idx = i + 1;
-      });
-      groups[idx].tasks.push(task);
-    });
-  // A batch without tasks yet is hidden (no lonely divider); it appears with
-  // its first task. Dividers show once any visible batch is a marked one.
-  const visible = groups.filter((group) => group.tasks.length).reverse();
-  const showDivider = visible.some((group) => group.marker);
-  return visible.map((group) => ({ ...group, showDivider }));
+// The queue is one flat list in task-time order (newest first). Legacy
+// queueBatches data is kept on the session but its boundaries are ignored.
+function buildQueueGroups(tasks) {
+  return [...tasks].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 }
 
-function renderQueuePanel(tasks, batches) {
+function renderQueuePanel(tasks) {
   const container = els.imageHistory;
   if (!container) return;
-  const groups = buildQueueGroups(tasks, batches);
-  const signature = groups
-    .map((group) => `${group.index}:${group.marker?.id || ""}:${group.tasks.map((task) => `${task.id}/${visualTaskRenderSignature(task)}`).join(",")}`)
-    .join("|") + `@${activeVisualSessionId}`;
+  const ordered = buildQueueGroups(tasks);
+  const signature = ordered.map((task) => `${task.id}/${visualTaskRenderSignature(task)}`).join(",") + `@${activeVisualSessionId}`;
   if (container.dataset.queueSignature === signature) return;
   container.dataset.queueSignature = signature;
   container.innerHTML = "";
-  if (!tasks.length && !groups.length) {
+  if (!ordered.length) {
     const empty = document.createElement("p");
     empty.className = "panel-empty";
     empty.textContent = "还没有任务，提交生成后会出现在这里。";
     container.appendChild(empty);
     return;
   }
-  groups.forEach((group) => {
-    if (group.showDivider) {
-      const divider = document.createElement("div");
-      divider.className = "queue-batch-divider";
-      divider.dataset.batchIndex = String(group.index);
-      divider.textContent = group.marker
-        ? `批次 ${group.index + 1} · ${formatTime(group.marker.at)}`
-        : "批次 1";
-      container.appendChild(divider);
-    }
-    group.tasks.forEach((task) => container.appendChild(renderHistoryItem(task)));
-  });
+  ordered.forEach((task) => container.appendChild(renderHistoryItem(task)));
 }
 
 function renderHistoryItem(task) {
@@ -7118,7 +7078,10 @@ function updatePromptCounter() {
 function autoResizePrompt() {
   updatePromptCounter();
   els.promptInput.style.height = "auto";
-  els.promptInput.style.height = `${Math.min(220, Math.max(54, els.promptInput.scrollHeight))}px`;
+  const chat = activeMode !== "image";
+  const min = chat ? 44 : 54;
+  const max = chat ? 160 : 220;
+  els.promptInput.style.height = `${Math.min(max, Math.max(min, els.promptInput.scrollHeight))}px`;
 }
 
 function exportData() {

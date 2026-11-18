@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#f8f8f9" />
     <title>DeepImage2-Video</title>
     <link rel="icon" href="./favicon.ico?v=20260727-40" sizes="any" />
-    <link rel="stylesheet" href="./styles.css?v=20261118-r13" />
+    <link rel="stylesheet" href="./styles.css?v=20261118-r16" />
   </head>
   <body>
     <div id="app" class="app-shell">
@@ -19,30 +19,13 @@
 
         <div class="sidebar-main-menu">
           <nav class="main-menu" aria-label="主菜单">
-            <button id="menuImageMode" class="menu-item active" type="button" aria-current="page">
+            <button id="menuVisualNav" class="menu-item active" type="button" aria-current="page">
               <span class="menu-icon" aria-hidden="true">▦</span>
-              <span class="menu-label">图片生成</span>
+              <span class="menu-label">视觉创作</span>
             </button>
-            <button id="menuVideoMode" class="menu-item" type="button">
-              <span class="menu-icon" aria-hidden="true">▶</span>
-              <span class="menu-label">视频生成</span>
-            </button>
-            <button id="menuChatMode" class="menu-item" type="button">
+            <button id="menuChatNav" class="menu-item" type="button">
               <span class="menu-icon" aria-hidden="true">✦</span>
-              <span class="menu-label">语言模型</span>
-            </button>
-          </nav>
-        </div>
-
-        <div class="sidebar-main-menu sidebar-menu-actions">
-          <nav class="main-menu menu-actions" aria-label="新建">
-            <button id="menuNewCreation" class="menu-item menu-action" type="button">
-              <span class="menu-icon" aria-hidden="true">＋</span>
-              <span class="menu-label">新建视觉创作</span>
-            </button>
-            <button id="menuNewChat" class="menu-item menu-action" type="button">
-              <span class="menu-icon" aria-hidden="true">＋</span>
-              <span class="menu-label">新建模型对话</span>
+              <span class="menu-label">AI对话</span>
             </button>
           </nav>
         </div>
@@ -50,7 +33,10 @@
         <div id="sidebarRecords" class="sidebar-records panel">
           <div class="panel-head sidebar-records-heading">
             <span id="sidebarRecordsTitle" class="panel-title">创作记录</span>
-            <span id="sidebarRecordsCount" class="panel-sub">0</span>
+            <span class="sidebar-records-tools">
+              <span id="sidebarRecordsCount" class="panel-sub">0</span>
+              <button id="newRecordBtn" class="icon-button record-add-button" type="button" title="新建视觉会话" aria-label="新建视觉会话">＋</button>
+            </span>
           </div>
           <div id="sessionMountSidebar" class="session-mount session-mount-sidebar">
             <div id="sessionBrowser" class="session-browser">
@@ -145,7 +131,6 @@
             <div class="composer-main">
             <div id="composerTitleRow" class="composer-title-row">
               <h3 id="composerTitle">图片生成</h3>
-              <button id="newSessionBtn" class="new-session-pill" type="button">+ 新建队列</button>
             </div>
             <div id="referencePanel" class="reference-panel" hidden>
               <div class="reference-panel-head">
@@ -155,10 +140,6 @@
               <div id="draftMediaTray" class="draft-media-tray reference-grid"></div>
               <div id="referencePurposeMenu" class="reference-purpose-menu" role="group" aria-label="指定素材用途" hidden></div>
               <p id="referenceSlotHint" class="reference-slot-hint" hidden>先点 ＋ 上传，再点缩略图指定用途</p>
-            </div>
-            <div id="chatToolbar" class="chat-toolbar" hidden>
-              <button id="uploadChatFileButton" class="chip tool-chip" type="button" title="上传文件">＋ 文件</button>
-              <button id="chatWebToggle" class="chip tool-chip" type="button" aria-pressed="false" title="联网搜索">◎ 联网</button>
             </div>
             <div id="chatAttachmentTray" class="draft-media-tray" hidden></div>
             <div id="visualToolbar" class="visual-toolbar">
@@ -178,6 +159,10 @@
 
             <div class="composer-footer">
             <div id="visualSettingsCard" class="settings-card settings-popover panel" hidden>
+              <div class="visual-type-switch" role="group" aria-label="生成类型">
+                <button id="visualTypeImage" class="visual-type-option active" type="button" aria-pressed="true">图片</button>
+                <button id="visualTypeVideo" class="visual-type-option" type="button" aria-pressed="false">视频</button>
+              </div>
               <div class="panel-head">
                 <span id="settingsPopoverTitle" class="panel-title">图片设置</span>
                 <span id="settingsPopoverSub" class="panel-sub"></span>
@@ -253,6 +238,8 @@
               <div class="quick-controls">
                 <button id="streamToggle" class="chip active" type="button" aria-pressed="true" hidden>流式</button>
                 <button id="thinkingToggle" class="chip" type="button" aria-pressed="false" hidden>思考</button>
+                <button id="chatWebToggle" class="chip chat-chip" type="button" aria-pressed="false" title="联网搜索" hidden>联网</button>
+                <button id="uploadChatFileButton" class="chip chat-chip" type="button" title="上传文件" hidden>文件</button>
                 <select id="quickModel" class="quick-select" aria-label="模型" hidden></select>
               </div>
               <div id="composerSummary" class="composer-summary">
@@ -457,6 +444,6 @@
     <datalist id="modelOptions"></datalist>
     <div id="toast" class="toast" popover="manual" role="status" aria-live="polite" hidden></div>
 
-    <script src="./app.js?v=20261118-r13" defer></script>
+    <script src="./app.js?v=20261118-r16" defer></script>
   </body>
 </html>

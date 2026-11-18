@@ -93,19 +93,13 @@ test("task type is inferred from source hint, media and params", () => {
   assert.equal(app.inferVisualTaskType({}), "image");
 });
 
-test("queue groups: new-batch markers split tasks, newest batch first", () => {
+test("r16 queue is flat in time order; legacy queueBatches boundaries are ignored", () => {
   const tasks = [
     { id: 1, createdAt: 10 }, { id: 2, createdAt: 20 },
     { id: 3, createdAt: 110 }, { id: 4, createdAt: 120 },
   ];
-  const groups = app.buildQueueGroups(tasks, [{ id: "m", at: 100 }]);
-  assert.equal(groups.length, 2);
-  assert.deepEqual(groups[0].tasks.map((t) => t.id), [4, 3]);
-  assert.deepEqual(groups[1].tasks.map((t) => t.id), [2, 1]);
-  assert.ok(groups.every((g) => g.showDivider));
-  const flat = app.buildQueueGroups(tasks, []);
-  assert.equal(flat.length, 1);
-  assert.equal(flat[0].showDivider, false);
+  assert.deepEqual(app.buildQueueGroups(tasks).map((t) => t.id), [4, 3, 2, 1]);
+  assert.deepEqual(app.buildQueueGroups([]), []);
 });
 
 test("clicking a queue entry scrolls to and highlights the work; missing work is restored", () => {
