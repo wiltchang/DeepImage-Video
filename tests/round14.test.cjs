@@ -18,18 +18,19 @@ test("r16 #1 left menu: only 视觉创作 / AI对话, pure navigation, no new-ac
   assert.doesNotMatch(html, /menuNewCreation|menuNewChat|menuImageMode|menuVideoMode|新建模型对话|新建视觉创作|menu-actions/);
 });
 
-test("r16 #2 #3 #4 records ＋ is the only new-session entry; type switch is an always-visible footer row; no 新建队列", () => {
+test("r16 #2 #3 #4 records ＋ is the only new-session entry; type switch lives in the model popover; no 新建队列", () => {
   assert.match(html, /id="newRecordBtn"[^>]*aria-label=/);
   assert.equal((html.match(/id="newRecordBtn"/g) || []).length, 1);
   assert.doesNotMatch(html, /newSessionBtn|新建队列/);
   const card = html.match(/id="visualSettingsCard"[\s\S]*?id="imageOutputSettings"/)[0];
   assert.ok(!card.includes("visualTypeImage") && !card.includes("visualTypeVideo"));
+  const popover = html.match(/id="modelPopover"[\s\S]*?id="modelPopoverList"/)[0];
+  assert.ok(popover.includes('id="visualTypeSwitch"') && popover.includes('id="visualTypeImage"') && popover.includes('id="visualTypeVideo"'));
   const footer = html.match(/<div class="composer-footer">([\s\S]*)<\/form>/)[1];
-  assert.ok(footer.indexOf('id="visualTypeSwitch"') >= 0);
-  assert.ok(footer.indexOf('id="visualTypeSwitch"') < footer.indexOf('id="visualSettingsCard"'));
-  assert.ok(footer.indexOf('id="visualTypeImage"') < footer.indexOf('id="composerSummary"'));
-  assert.ok(footer.indexOf('id="visualTypeVideo"') < footer.indexOf('id="composerSummary"'));
-  assert.match(css, /padding-bottom: calc\(196px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.equal((footer.match(/id="visualTypeSwitch"/g) || []).length, 1);
+  assert.ok(footer.indexOf('id="visualTypeSwitch"') > footer.indexOf('id="modelPopover"'));
+  assert.match(css, /padding-bottom: calc\(160px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.doesNotMatch(css, /calc\(196px/);
   const tasks = [{ id: 1, createdAt: 150 }, { id: 2, createdAt: 250 }];
   assert.deepEqual(app.buildQueueGroups(tasks).map((t) => t.id), [2, 1]);
 });
@@ -40,7 +41,7 @@ test("r14 #3 chat composer: file/web chips live in the quick-controls row beside
     assert.ok(row.includes(`id="${id}"`), id);
   }
   assert.doesNotMatch(html, /id="chatToolbar"/);
-  assert.match(html, /\?v=20261118-r19/);
+  assert.match(html, /\?v=20261119-r20/);
 });
 
 test("r18 mobile chat composer toolbar stays on one nowrap row", () => {
@@ -54,5 +55,16 @@ test("r18 mobile chat composer toolbar stays on one nowrap row", () => {
   assert.match(block, /\.send-wrap \{[^}]*margin-left: auto;/);
   // legacy rule that stretched/centred the model chip is gone
   assert.doesNotMatch(css, /\n  \.model-picker-trigger \{\s*width: 100%;/);
-  assert.match(html, /\?v=20261118-r19/);
+  assert.match(html, /\?v=20261119-r20/);
+});
+
+test("r20 type switch is shown only for the visual model popover and re-opens it after switching", () => {
+  const js = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(js, /els\.visualTypeSwitch\.hidden = activeMode !== "image";/);
+  assert.doesNotMatch(js, /els\.visualTypeSwitch\.hidden = !isVisual/);
+  const fn = js.match(/function pickVisualTypeFromPopover\(mode\) \{[\s\S]*?\n\}/)[0];
+  assert.match(fn, /setVisualMode\(mode\)/);
+  assert.match(fn, /openModelPopover\(\)/);
+  assert.match(js, /visualTypeImage\.addEventListener\("click", \(\) => \{\s*pickVisualTypeFromPopover\("image"\)/);
+  assert.match(js, /visualTypeVideo\.addEventListener\("click", \(\) => \{\s*pickVisualTypeFromPopover\("video"\)/);
 });

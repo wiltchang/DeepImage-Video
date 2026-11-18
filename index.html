@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#f8f8f9" />
     <title>DeepImage2-Video</title>
     <link rel="icon" href="./favicon.ico?v=20260727-40" sizes="any" />
-    <link rel="stylesheet" href="./styles.css?v=20261118-r19" />
+    <link rel="stylesheet" href="./styles.css?v=20261119-r20" />
   </head>
   <body>
     <div id="app" class="app-shell">
@@ -158,10 +158,6 @@
             </div>
 
             <div class="composer-footer">
-              <div id="visualTypeSwitch" class="visual-type-switch" hidden role="group" aria-label="生成类型">
-                <button id="visualTypeImage" class="visual-type-option active" type="button" aria-pressed="true">图片</button>
-                <button id="visualTypeVideo" class="visual-type-option" type="button" aria-pressed="false">视频</button>
-              </div>
             <div id="visualSettingsCard" class="settings-card settings-popover panel" hidden>
               <div class="panel-head">
                 <span id="settingsPopoverTitle" class="panel-title">图片设置</span>
@@ -251,6 +247,10 @@
                     <span class="model-chip-caret" aria-hidden="true">⌄</span>
                   </button>
                   <div id="modelPopover" class="model-popover" hidden>
+                    <div id="visualTypeSwitch" class="visual-type-switch" hidden role="group" aria-label="生成类型">
+                      <button id="visualTypeImage" class="visual-type-option active" type="button" aria-pressed="true">图片</button>
+                      <button id="visualTypeVideo" class="visual-type-option" type="button" aria-pressed="false">视频</button>
+                    </div>
                     <div id="modelPopoverList" class="model-popover-list" role="listbox" aria-label="选择模型"></div>
                   </div>
                 </div>
@@ -444,6 +444,6 @@
     <datalist id="modelOptions"></datalist>
     <div id="toast" class="toast" popover="manual" role="status" aria-live="polite" hidden></div>
 
-    <script src="./app.js?v=20261118-r19" defer></script>
+    <script src="./app.js?v=20261119-r20" defer></script>
   </body>
 </html>

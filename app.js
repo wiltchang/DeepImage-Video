@@ -1408,10 +1408,10 @@ function bindEvents() {
     setMode("chat");
   });
   els.visualTypeImage.addEventListener("click", () => {
-    if (state.settings.visualMode !== "image") setVisualMode("image");
+    pickVisualTypeFromPopover("image");
   });
   els.visualTypeVideo.addEventListener("click", () => {
-    if (state.settings.visualMode !== "video") setVisualMode("video");
+    pickVisualTypeFromPopover("video");
   });
   els.sidebarModelSettings.addEventListener("click", () => openSettings("models"));
   els.sessionSearch.addEventListener("input", renderSessions);
@@ -2240,7 +2240,7 @@ function settingsSummaryParts() {
       optionLabelForValue(videoAspectOptionsForModel(), effectiveVideoAspectRatio()),
     ];
     if (!usesPixelVideoSizeOptions(modelId)) {
-      parts.push(optionSummaryLabel(videoResolutionOptionsWithDims(), effectiveVideoResolution()));
+      parts.push(optionLabelForValue(videoResolutionOptionsWithDims(), effectiveVideoResolution()));
     }
     parts.push(duration === -1 ? "自动" : `${duration}s`);
     parts.push(`${effectiveVideoCount()} 条`);
@@ -2257,7 +2257,6 @@ function updateSettingsSummary() {
   if (!els.settingsSummaryBlock) return;
   const isVisual = activeMode === "image";
   els.settingsSummaryBlock.hidden = !isVisual;
-  if (els.visualTypeSwitch) els.visualTypeSwitch.hidden = !isVisual;
   if (!isVisual) return;
   const isVideo = state.settings.visualMode === "video";
   els.settingsSummaryLabel.textContent = isVideo ? "视频设置" : "图片设置";
@@ -6344,10 +6343,20 @@ function toggleModelPopover() {
 function openModelPopover() {
   closeSettingsPopover();
   modelPopoverType = activeMode === "image" ? state.settings.visualMode : "chat";
+  if (els.visualTypeSwitch) els.visualTypeSwitch.hidden = activeMode !== "image";
   renderModelPopover();
   modelPopoverOpen = true;
   els.modelPopover.hidden = false;
   els.quickModelButton.setAttribute("aria-expanded", "true");
+}
+
+// r20: type switch lives inside the model popover (visual mode only). Switching
+// reuses setVisualMode, then re-opens the popover so a model can be picked next.
+function pickVisualTypeFromPopover(mode) {
+  if (state.settings.visualMode !== mode) {
+    setVisualMode(mode);
+    openModelPopover();
+  }
 }
 
 function closeModelPopover() {

@@ -151,6 +151,13 @@ test("#6 summary shows only main items (r19: image ratio/size/count, video ratio
   assert.doesNotMatch(video, /风格|静音|有声|音频/);
 });
 
+test("r20 video summary shows only the resolution tier name, no pixel size", () => {
+  app.setTestSettings({ visualMode: "video", videoModel: "doubao-seedance-2-0-260128", videoAspectRatio: "16:9", videoResolution: "720p", videoDuration: 5, videoCount: 1 });
+  assert.equal(app.settingsSummaryParts().join(" · "), "16:9 · 720p · 5s · 1 条");
+  // panel options keep their pixel sub text
+  assert.ok(app.videoResolutionOptionsWithDims().some((option) => option.value === "720p" && option.sub));
+});
+
 test("r19 summary text is forced to a single line with ellipsis", () => {
   const css = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "styles.css"), "utf8");
   const block = css.slice(css.indexOf("r19: settings summary is always a single line"));
