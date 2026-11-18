@@ -5529,7 +5529,7 @@ function clearVisualTasks() {
 
 function renderVisualMeta() {
   const visualMode = state.settings.visualMode;
-  els.visualPanelTitle.textContent = visualMode === "video" ? "视频生成" : "图片生成";
+  els.visualPanelTitle.textContent = "生成记录";
   if (els.settingsPopoverTitle) els.settingsPopoverTitle.textContent = visualMode === "video" ? "视频设置" : "图片设置";
   if (els.settingsPopoverSub) {
     els.settingsPopoverSub.textContent = visualMode === "video" ? state.settings.videoModel || "" : state.settings.imageModel || "";

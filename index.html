@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#f8f8f9" />
     <title>DeepImage2-Video</title>
     <link rel="icon" href="./favicon.ico?v=20260727-40" sizes="any" />
-    <link rel="stylesheet" href="./styles.css?v=20261118-r10" />
+    <link rel="stylesheet" href="./styles.css?v=20261118-r12" />
   </head>
   <body>
     <div id="app" class="app-shell">
@@ -36,13 +36,13 @@
 
         <div class="sidebar-main-menu sidebar-menu-actions">
           <nav class="main-menu menu-actions" aria-label="新建">
-            <button id="menuNewChat" class="menu-item menu-action" type="button">
-              <span class="menu-icon" aria-hidden="true">＋</span>
-              <span class="menu-label">新建对话</span>
-            </button>
             <button id="menuNewCreation" class="menu-item menu-action" type="button">
               <span class="menu-icon" aria-hidden="true">＋</span>
-              <span class="menu-label">新建创作</span>
+              <span class="menu-label">新建视觉创作</span>
+            </button>
+            <button id="menuNewChat" class="menu-item menu-action" type="button">
+              <span class="menu-icon" aria-hidden="true">＋</span>
+              <span class="menu-label">新建模型对话</span>
             </button>
           </nav>
         </div>
@@ -105,7 +105,7 @@
             <div class="visual-main">
               <div class="visual-head">
                 <div>
-                  <h2 id="visualPanelTitle">图片生成</h2>
+                  <h2 id="visualPanelTitle">生成记录</h2>
                 </div>
                 <div class="visual-head-actions">
                   <button id="clearImages" class="mini-button" type="button">清空会话</button>
@@ -447,6 +447,6 @@
     <datalist id="modelOptions"></datalist>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-    <script src="./app.js?v=20261118-r10" defer></script>
+    <script src="./app.js?v=20261118-r12" defer></script>
   </body>
 </html>

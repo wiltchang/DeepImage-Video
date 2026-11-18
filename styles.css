@@ -5751,3 +5751,47 @@ summary:active,
     max-height: min(46dvh, 520px);
   }
 }
+
+/* ---------- Round 12: unified title rows on the three cards ----------
+   Title 15px / 600 / 22px line; row horizontal padding 20px aligned with
+   each card's own side padding; secondary info 12px grey. */
+.workspace.visual-workspace .composer-card {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+
+.visual-inspector .queue-panel {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+
+.workspace.visual-workspace .visual-head {
+  align-items: center;
+  min-height: 32px;
+  padding: 14px 20px 12px;
+}
+
+.workspace.visual-workspace .composer-title-row,
+.visual-inspector .queue-panel .panel-head {
+  align-items: center;
+  min-height: 32px;
+  padding: 0 0 12px;
+}
+
+.workspace.visual-workspace .visual-head h2,
+.workspace.visual-workspace .composer-title-row h3,
+.visual-inspector .queue-panel .panel-title {
+  margin: 0;
+  color: var(--text-main);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.visual-inspector .queue-panel .panel-sub,
+.workspace.visual-workspace .visual-head p {
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+}
