@@ -5425,3 +5425,19 @@ summary:active,
     backdrop-filter: none;
   }
 }
+
+/* ==========================================================================
+   Round 8 — mobile generation queue was never visible (<=900px)
+   Root cause: the earliest <=900px layer (~line 2088) has
+   `.visual-inspector { display: none; }` (specificity 0,1,0). Round 5's
+   mobile layer set flex/min-height on `.workspace.visual-workspace
+   .visual-inspector` but never reset display, so the whole right column
+   (aside.visual-inspector, containing .queue-panel) stayed hidden on phones.
+   Desktop unaffected. The base layer's flex-direction/gap still apply.
+   Fix: only restore display here; no other layout values touched.
+   ========================================================================== */
+@media (max-width: 900px) {
+  .workspace.visual-workspace .visual-inspector {
+    display: flex;
+  }
+}
