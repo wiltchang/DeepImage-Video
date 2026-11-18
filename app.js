@@ -470,6 +470,8 @@ function initElements() {
     "imageWatermarkGroup",
     "imageSequentialGroup",
     "imageCountGroup",
+    "imageMoreSettings",
+    "videoMoreSettings",
     "videoAspectGroup",
     "videoResolutionGroup",
     "videoDurationGroup",
@@ -1543,6 +1545,9 @@ function bindEvents() {
   });
   els.quickModelButton.addEventListener("click", toggleModelPopover);
   els.settingsSummaryBlock.addEventListener("click", toggleSettingsPopover);
+  for (const box of [els.imageMoreSettings, els.videoMoreSettings]) {
+    box?.querySelector(".more-settings-toggle")?.addEventListener("click", () => setMoreSettingsOpen(!moreSettingsOpen));
+  }
   els.settingsSummaryBlock.addEventListener("keydown", (event) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
@@ -2029,12 +2034,14 @@ function renderOutputOptions() {
   renderOptionGroup(els.videoCountGroup, "videoCount", COUNT_SETTING_OPTIONS, String(effectiveVideoCount()));
   renderOptionGroup(els.videoStyleGroup, "videoStyle", VIDEO_STYLE_OPTIONS, state.settings.videoStyle);
   renderOptionGroup(els.videoAudioGroup, "videoAudio", VIDEO_AUDIO_OPTIONS, String(effectiveVideoAudio()), {
+    block: true,
     disabled: isVeoModel(state.settings.videoModel),
     disabledReason: isVeo2Model(state.settings.videoModel) ? "Veo 2 仅生成静音视频" : "Veo 3 系列始终生成音频",
   });
   els.videoAudioGroup.title = isVeo2Model(state.settings.videoModel)
     ? "Veo 2 仅生成静音视频"
     : isVeoModel(state.settings.videoModel) ? "Veo 3 系列始终生成音频" : "";
+  updateMoreSettingsIndicator();
   updateSettingsSummary();
 }
 
@@ -2139,7 +2146,8 @@ function renderOptionGroup(container, key, options, currentValue, config = {}) {
       const disabled = reason
         ? ` is-disabled" aria-disabled="true" data-disabled-reason="${escapeAttr(reason)}" title="${escapeAttr(reason)}`
         : "";
-      return `<button class="option-button pill-option${active}${disabled}" type="button" data-setting-key="${escapeAttr(key)}" data-value="${escapeAttr(option.value)}">${tierHtml}<span class="pill-label">${escapeHtml(option.label)}</span>${subHtml}<span class="option-check" aria-hidden="true">✓</span></button>`;
+      const block = config.block ? " block-option" : "";
+      return `<button class="option-button pill-option${block}${active}${disabled}" type="button" data-setting-key="${escapeAttr(key)}" data-value="${escapeAttr(option.value)}">${tierHtml}<span class="pill-label">${escapeHtml(option.label)}</span>${subHtml}<span class="option-check" aria-hidden="true">✓</span></button>`;
     })
     .join("") + (config.hint ? `<p class="setting-hint">${escapeHtml(config.hint)}</p>` : "");
 }
@@ -2170,7 +2178,11 @@ function renderTileGroup(container, key, options, currentValue) {
   container.innerHTML = options
     .map((option) => {
       const active = String(option.value) === String(currentValue) ? " active" : "";
-      return `<button class="ratio-tile${active}" type="button" data-setting-key="${escapeAttr(key)}" data-value="${escapeAttr(option.value)}">${ratioGlyphForValue(option.value)}<span class="ratio-label">${escapeHtml(option.label)}</span><span class="option-check" aria-hidden="true">✓</span></button>`;
+      const reason = option.disabledReason || "";
+      const disabled = reason
+        ? ` is-disabled" aria-disabled="true" data-disabled-reason="${escapeAttr(reason)}" title="${escapeAttr(reason)}`
+        : "";
+      return `<button class="ratio-tile${active}${disabled}" type="button" data-setting-key="${escapeAttr(key)}" data-value="${escapeAttr(option.value)}">${ratioGlyphForValue(option.value)}<span class="ratio-label">${escapeHtml(option.label)}</span><span class="option-check" aria-hidden="true">✓</span></button>`;
     })
     .join("");
 }
@@ -2263,6 +2275,52 @@ function updateSettingsSummary() {
   const text = settingsSummaryParts().join(" · ");
   els.settingsSummaryText.textContent = text;
   els.settingsSummaryText.title = text;
+}
+
+// ---- "更多设置" collapsible: secondary params, collapsed by default ----
+let moreSettingsOpen = false;
+function setMoreSettingsOpen(open) {
+  moreSettingsOpen = !!open;
+  for (const box of [els.imageMoreSettings, els.videoMoreSettings]) {
+    if (!box) continue;
+    const toggle = box.querySelector(".more-settings-toggle");
+    const body = box.querySelector(".more-settings-body");
+    if (toggle) toggle.setAttribute("aria-expanded", String(moreSettingsOpen));
+    if (body) body.hidden = !moreSettingsOpen;
+    box.classList.toggle("open", moreSettingsOpen);
+  }
+}
+
+function updateMoreSettingsIndicator() {
+  const defs = [
+    [els.imageMoreSettings, [
+      [els.imageQualityGroup, () => state.settings.imageQuality, DEFAULT_SETTINGS.imageQuality],
+      [els.imageBackgroundGroup, () => gptImageBackgroundValue(), "auto"],
+      [els.imageFormatGroup, () => gptImageOutputFormatValue(), DEFAULT_SETTINGS.imageOutputFormat],
+      [els.imageStyleGroup, () => state.settings.imageStyle, DEFAULT_SETTINGS.imageStyle],
+      [els.imageWatermarkGroup, () => !!state.settings.imageWatermark, DEFAULT_SETTINGS.imageWatermark],
+      [els.imageSequentialGroup, () => !!state.settings.imageSequential, DEFAULT_SETTINGS.imageSequential],
+      [els.imageCountGroup, () => (state.settings.imageModel === "dall-e-3" ? 1 : state.settings.imageCount), DEFAULT_SETTINGS.imageCount],
+    ]],
+    [els.videoMoreSettings, [
+      [els.videoStyleGroup, () => state.settings.videoStyle, DEFAULT_SETTINGS.videoStyle],
+      [els.videoCountGroup, () => effectiveVideoCount(), DEFAULT_SETTINGS.videoCount],
+    ]],
+  ];
+  for (const [box, rows] of defs) {
+    if (!box) continue;
+    let visible = 0;
+    let changed = false;
+    for (const [group, getValue, def] of rows) {
+      const row = group?.closest(".setting-row");
+      if (!row || row.hidden) continue;
+      visible += 1;
+      if (String(getValue()) !== String(def)) changed = true;
+    }
+    box.hidden = visible === 0;
+    const dot = box.querySelector(".more-settings-dot");
+    if (dot) dot.hidden = !changed;
+  }
 }
 
 function applySettingsPopoverVisibility() {
@@ -7817,6 +7875,7 @@ if (typeof module !== "undefined" && module.exports) {
     gptImageFormatOptions,
     gptImageBackgroundOptions,
     renderOptionGroup,
+    renderTileGroup,
     durationTickIndexes,
     renderDurationSlider,
     settingsSummaryParts,

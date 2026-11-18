@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#f8f8f9" />
     <title>DeepImage2-Video</title>
     <link rel="icon" href="./favicon.ico?v=20260727-40" sizes="any" />
-    <link rel="stylesheet" href="./styles.css?v=20261119-r20" />
+    <link rel="stylesheet" href="./styles.css?v=20261119-r22" />
   </head>
   <body>
     <div id="app" class="app-shell">
@@ -172,33 +172,42 @@
                   <span>分辨率</span>
                   <div id="imageSizeGroup" class="pill-grid"></div>
                 </div>
-                <div class="setting-row">
-                  <span>质量</span>
-                  <div id="imageQualityGroup" class="pill-grid"></div>
-                </div>
-                <div class="setting-row" hidden>
-                  <span>背景</span>
-                  <div id="imageBackgroundGroup" class="pill-grid"></div>
-                </div>
-                <div class="setting-row" hidden>
-                  <span>输出格式</span>
-                  <div id="imageFormatGroup" class="pill-grid"></div>
-                </div>
-                <div class="setting-row">
-                  <span>风格</span>
-                  <div id="imageStyleGroup" class="pill-grid"></div>
-                </div>
-                <div class="setting-row" hidden>
-                  <span>AI 水印</span>
-                  <div id="imageWatermarkGroup" class="pill-grid"></div>
-                </div>
-                <div class="setting-row" hidden>
-                  <span>组图生成</span>
-                  <div id="imageSequentialGroup" class="pill-grid"></div>
-                </div>
-                <div class="setting-row">
-                  <span>数量</span>
-                  <div id="imageCountGroup" class="pill-grid"></div>
+                <div id="imageMoreSettings" class="more-settings">
+                  <button type="button" class="more-settings-toggle" aria-expanded="false" aria-controls="imageMoreSettingsBody">
+                    <span class="more-settings-title">更多设置</span>
+                    <span class="more-settings-dot" hidden aria-label="含非默认设置" title="含非默认设置"></span>
+                    <span class="more-settings-caret" aria-hidden="true">⌄</span>
+                  </button>
+                  <div id="imageMoreSettingsBody" class="more-settings-body" hidden>
+                    <div class="setting-row">
+                      <span>质量</span>
+                      <div id="imageQualityGroup" class="pill-grid"></div>
+                    </div>
+                    <div class="setting-row" hidden>
+                      <span>背景</span>
+                      <div id="imageBackgroundGroup" class="pill-grid"></div>
+                    </div>
+                    <div class="setting-row" hidden>
+                      <span>输出格式</span>
+                      <div id="imageFormatGroup" class="pill-grid"></div>
+                    </div>
+                    <div class="setting-row">
+                      <span>风格</span>
+                      <div id="imageStyleGroup" class="pill-grid"></div>
+                    </div>
+                    <div class="setting-row" hidden>
+                      <span>AI 水印</span>
+                      <div id="imageWatermarkGroup" class="pill-grid"></div>
+                    </div>
+                    <div class="setting-row" hidden>
+                      <span>组图生成</span>
+                      <div id="imageSequentialGroup" class="pill-grid"></div>
+                    </div>
+                    <div class="setting-row">
+                      <span>数量</span>
+                      <div id="imageCountGroup" class="pill-grid"></div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -216,16 +225,25 @@
                   <div id="videoDurationGroup" class="duration-control"></div>
                 </div>
                 <div class="setting-row">
-                  <span>数量</span>
-                  <div id="videoCountGroup" class="pill-grid"></div>
-                </div>
-                <div class="setting-row">
-                  <span>风格</span>
-                  <div id="videoStyleGroup" class="pill-grid"></div>
-                </div>
-                <div class="setting-row">
                   <span>音频</span>
                   <div id="videoAudioGroup" class="pill-grid"></div>
+                </div>
+                <div id="videoMoreSettings" class="more-settings">
+                  <button type="button" class="more-settings-toggle" aria-expanded="false" aria-controls="videoMoreSettingsBody">
+                    <span class="more-settings-title">更多设置</span>
+                    <span class="more-settings-dot" hidden aria-label="含非默认设置" title="含非默认设置"></span>
+                    <span class="more-settings-caret" aria-hidden="true">⌄</span>
+                  </button>
+                  <div id="videoMoreSettingsBody" class="more-settings-body" hidden>
+                    <div class="setting-row">
+                      <span>风格</span>
+                      <div id="videoStyleGroup" class="pill-grid"></div>
+                    </div>
+                    <div class="setting-row">
+                      <span>数量</span>
+                      <div id="videoCountGroup" class="pill-grid"></div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -444,6 +462,6 @@
     <datalist id="modelOptions"></datalist>
     <div id="toast" class="toast" popover="manual" role="status" aria-live="polite" hidden></div>
 
-    <script src="./app.js?v=20261119-r20" defer></script>
+    <script src="./app.js?v=20261119-r22" defer></script>
   </body>
 </html>

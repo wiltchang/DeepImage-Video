@@ -6460,3 +6460,99 @@ summary:active,
     word-break: keep-all;
   }
 }
+
+/* ---------- r21: block-select polish ---------- */
+.ratio-tile.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ratio-tile.is-disabled:hover {
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
+#videoAudioGroup {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.pill-option.block-option {
+  min-height: 44px;
+  justify-content: center;
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+.settings-popover .pill-option.block-option {
+  min-height: 40px;
+}
+
+/* ---------- r22: 主参数直出 + 「更多设置」默认折叠 ---------- */
+.settings-popover .more-settings[hidden] {
+  display: none;
+}
+
+.settings-popover .more-settings {
+  margin-top: 4px;
+  border-top: 1px solid var(--border, rgba(15, 23, 42, 0.08));
+}
+
+.settings-popover .more-settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 0 6px;
+  border: 0;
+  background: none;
+  color: var(--muted, #64748b);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-popover .more-settings-toggle:hover {
+  color: var(--text, #0f172a);
+}
+
+.settings-popover .more-settings-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent, #2563eb);
+  flex: none;
+}
+
+.settings-popover .more-settings-dot[hidden] {
+  display: none;
+}
+
+.settings-popover .more-settings-caret {
+  margin-left: auto;
+  transition: transform 0.15s ease;
+}
+
+.settings-popover .more-settings.open .more-settings-caret {
+  transform: rotate(180deg);
+}
+
+.settings-popover .more-settings-body[hidden] {
+  display: none;
+}
+
+/* tighter rows so the default (collapsed) panel fits one screen */
+.settings-card.settings-popover .setting-row {
+  padding: 8px 0;
+}
+
+.settings-popover .output-settings > .setting-row:last-child {
+  padding-bottom: 8px;
+}
+
+.settings-popover .more-settings-body > .setting-row:last-child {
+  padding-bottom: 0;
+}
