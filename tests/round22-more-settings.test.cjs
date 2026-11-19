@@ -47,6 +47,6 @@ test("r22 more-settings is collapsed by default with a hidden dot", () => {
 });
 
 test("r22 cache-bust bumped", () => {
-  assert.match(html, /\?v=20261119-r28/);
+  assert.match(html, /\?v=20261119-r29/);
   assert.doesNotMatch(html, /20261119-r21/);
 });

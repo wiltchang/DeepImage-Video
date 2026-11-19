@@ -41,7 +41,7 @@ test("r14 #3 chat composer: file/web chips live in the quick-controls row beside
     assert.ok(row.includes(`id="${id}"`), id);
   }
   assert.doesNotMatch(html, /id="chatToolbar"/);
-  assert.match(html, /\?v=20261119-r28/);
+  assert.match(html, /\?v=20261119-r29/);
 });
 
 test("r18 mobile chat composer toolbar stays on one nowrap row", () => {
@@ -55,7 +55,7 @@ test("r18 mobile chat composer toolbar stays on one nowrap row", () => {
   assert.match(block, /\.send-wrap \{[^}]*margin-left: auto;/);
   // legacy rule that stretched/centred the model chip is gone
   assert.doesNotMatch(css, /\n  \.model-picker-trigger \{\s*width: 100%;/);
-  assert.match(html, /\?v=20261119-r28/);
+  assert.match(html, /\?v=20261119-r29/);
 });
 
 test("r20 type switch is shown only for the visual model popover and re-opens it after switching", () => {

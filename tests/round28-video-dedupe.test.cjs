@@ -33,10 +33,10 @@ test("r28 two content endpoints -> one, upstream preferred", () => {
   assert.equal(out[0], up);
 });
 
-test("r28 same basename mirrors collapse; different basenames kept", () => {
+test("r28 same basename mirrors collapse; extract keeps raw different basenames", () => {
   assert.equal(collapseVideoUrls(["https://a.com/x/clip.mp4?s=1", "https://b.com/y/clip.mp4"]).length, 1);
   assert.deepEqual(
-    collapseVideoUrls(["https://a.com/one.mp4", "https://a.com/two.mp4"]),
+    extractVideoUrls({ a_url: "https://a.com/one.mp4", b_url: "https://a.com/two.mp4" }),
     ["https://a.com/one.mp4", "https://a.com/two.mp4"],
   );
 });

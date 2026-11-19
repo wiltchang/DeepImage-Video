@@ -7132,13 +7132,13 @@ function extractVideoUrls(data) {
     }
   };
   visit(data, "root");
-  const candidates = collapseVideoUrls(unique(urls));
+  const candidates = dedupeVideoUrls(unique(urls));
   const directlyPlayable = candidates.filter((url) => !isAuthenticatedVideoProxyUrl(url));
   return directlyPlayable.length ? directlyPlayable : candidates;
 }
 
 // One task = one video: several addresses in one response are routes to the same file.
-function collapseVideoUrls(list) {
+function dedupeVideoUrls(list) {
   const items = unique(Array.isArray(list) ? list.filter(Boolean) : []);
   const isContent = (url) => /\/v1\/videos\/[^/?#]+\/content\/?(?:[?#]|$)/i.test(String(url));
   const directName = (url) => {
@@ -7171,12 +7171,33 @@ function collapseVideoUrls(list) {
   return out;
 }
 
+// Invariant: one video task = one playable URL. Best route wins:
+// direct media file > other direct URL > upstream content endpoint > gateway content endpoint.
+function pickBestVideoUrl(list) {
+  const items = unique(Array.isArray(list) ? list.filter(Boolean) : []);
+  if (items.length <= 1) return items;
+  const rank = (url) => {
+    const text = String(url);
+    const path = text.split(/[?#]/)[0];
+    if (!text.startsWith("data:") && /\.(?:mp4|webm|mov|m3u8)$/i.test(path)) return 0;
+    if (/\/v1\/videos\/[^/?#]+\/content\/?(?:[?#]|$)/i.test(text)) return isAuthenticatedVideoProxyUrl(text) ? 3 : 2;
+    return 1;
+  };
+  let best = items[0];
+  items.forEach((url) => { if (rank(url) < rank(best)) best = url; });
+  return [best];
+}
+
+function collapseVideoUrls(list) {
+  return pickBestVideoUrl(dedupeVideoUrls(list));
+}
+
 function decodeURIComponentSafe(text) {
   try { return decodeURIComponent(text); } catch { return text; }
 }
 
 function videoResultUrlsForTask(data, task) {
-  const media = extractVideoUrls(data);
+  const media = pickBestVideoUrl(extractVideoUrls(data));
   if (media.length) return media;
   const status = String(extractTaskStatus(data) || "").toLowerCase();
   const completed = ["succeeded", "success", "completed", "complete", "finished", "done"].includes(status);
