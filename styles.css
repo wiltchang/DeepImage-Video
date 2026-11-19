@@ -6558,18 +6558,7 @@ summary:active,
 }
 
 /* ---------- r24: composer model / settings blocks no longer truncated ---------- */
-/* Desktop: the model block sizes to its content (full model name first);
-   the settings block (short summary) absorbs any squeeze. */
-.workspace.visual-workspace .summary-model-block {
-  flex: 0 0 auto;
-  max-width: 60%;
-}
-
-.workspace.visual-workspace .summary-settings-block {
-  flex: 1 1 0;
-  min-width: 0;
-}
-
+/* (equal-width sizing + type/padding now live in r25 below) */
 .workspace.visual-workspace .summary-block .model-picker-trigger {
   max-width: none;
 }
@@ -6578,25 +6567,50 @@ summary:active,
   min-width: 0;
 }
 
-/* Mobile: equal halves, slightly smaller type + padding so the summary fits. */
-@media (max-width: 900px) {
-  .workspace.visual-workspace .summary-model-block,
-  .workspace.visual-workspace .summary-settings-block {
-    flex: 1 1 0;
-    min-width: 0;
-    max-width: none;
-    padding: 7px 10px;
-  }
+/* ---------- r25: equal-width model / settings blocks at every width; vendor icon moves to the label row ---------- */
+.model-picker-trigger {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
 
-  .workspace.visual-workspace .summary-block .model-picker-trigger {
-    gap: 5px;
-  }
+.summary-label-row {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
 
-  .workspace.visual-workspace .summary-block .model-picker-trigger strong {
-    font-size: 13px;
-  }
+/* chat mode: label hidden, icon stays beside the model chip exactly as before */
+.workspace:not(.visual-workspace) .summary-label-row {
+  display: contents;
+}
 
-  .workspace.visual-workspace .summary-settings-block .summary-value {
-    font-size: 12px;
-  }
+.workspace.visual-workspace .summary-model-block,
+.workspace.visual-workspace .summary-settings-block {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: none;
+  padding: 8px 8px;
+}
+
+.workspace.visual-workspace .summary-label-row .vendor-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  border-radius: 5px;
+  font-size: 10px;
+  padding: 0;
+}
+
+.workspace.visual-workspace .summary-block .model-picker-trigger {
+  gap: 4px;
+}
+
+.workspace.visual-workspace .summary-block .model-picker-trigger strong {
+  font-size: 13px;
+  letter-spacing: -0.2px;
+}
+
+.workspace.visual-workspace .summary-settings-block .summary-value {
+  font-size: 12px;
 }
