@@ -6556,3 +6556,47 @@ summary:active,
 .settings-popover .more-settings-body > .setting-row:last-child {
   padding-bottom: 0;
 }
+
+/* ---------- r24: composer model / settings blocks no longer truncated ---------- */
+/* Desktop: the model block sizes to its content (full model name first);
+   the settings block (short summary) absorbs any squeeze. */
+.workspace.visual-workspace .summary-model-block {
+  flex: 0 0 auto;
+  max-width: 60%;
+}
+
+.workspace.visual-workspace .summary-settings-block {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.workspace.visual-workspace .summary-block .model-picker-trigger {
+  max-width: none;
+}
+
+.workspace.visual-workspace .summary-block .model-picker-trigger strong {
+  min-width: 0;
+}
+
+/* Mobile: equal halves, slightly smaller type + padding so the summary fits. */
+@media (max-width: 900px) {
+  .workspace.visual-workspace .summary-model-block,
+  .workspace.visual-workspace .summary-settings-block {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: none;
+    padding: 7px 10px;
+  }
+
+  .workspace.visual-workspace .summary-block .model-picker-trigger {
+    gap: 5px;
+  }
+
+  .workspace.visual-workspace .summary-block .model-picker-trigger strong {
+    font-size: 13px;
+  }
+
+  .workspace.visual-workspace .summary-settings-block .summary-value {
+    font-size: 12px;
+  }
+}

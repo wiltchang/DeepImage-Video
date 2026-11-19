@@ -2244,6 +2244,7 @@ function optionSummaryLabel(options, value) {
 
 // r19: the bottom button only shows the main items (Ryan's decision).
 // Image: ratio · size · count. Video: ratio · resolution · duration · count.
+// r24: count is shown only when > 1 (keeps the summary short enough to fit).
 // Quality/background/format/style/audio stay in the settings panel only.
 function settingsSummaryParts() {
   if (state.settings.visualMode === "video") {
@@ -2256,13 +2257,15 @@ function settingsSummaryParts() {
       parts.push(optionLabelForValue(videoResolutionOptionsWithDims(), effectiveVideoResolution()));
     }
     parts.push(duration === -1 ? "自动" : `${duration}s`);
-    parts.push(`${effectiveVideoCount()} 条`);
+    const videoCount = effectiveVideoCount();
+    if (videoCount > 1) parts.push(`${videoCount} 条`);
     return parts;
   }
   const modelId = state.settings.imageModel;
   const parts = [optionLabelForValue(imageAspectOptionsForModel(), effectiveImageAspectRatio())];
   parts.push(optionSummaryLabel(imageSizeOptionsWithDims(), effectiveImageOutputSize()));
-  parts.push(`${modelId === "dall-e-3" ? 1 : state.settings.imageCount} 张`);
+  const imageCount = modelId === "dall-e-3" ? 1 : state.settings.imageCount;
+  if (imageCount > 1) parts.push(`${imageCount} 张`);
   return parts;
 }
 
