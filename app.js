@@ -13,6 +13,8 @@ const DEEPROUTER_PROXY_PREFIX = "/__deeprouter";
 const MEDIA_CACHE_DB_NAME = "yhshu_visual_media_cache";
 const MEDIA_CACHE_STORE = "visual_media";
 const MEDIA_CACHE_VERSION = 1;
+const UNIFIED_VISUAL_VERSION = 1;
+const VIDEO_MEDIA_PATTERN = /(^data:video\/|\.(mp4|webm|mov|m4v)(\?|#|$))/i;
 
 const MODEL_CATALOG = [
   {
@@ -561,7 +563,8 @@ function loadState() {
     if (!raw) return createInitialState();
     const parsed = JSON.parse(raw);
     return normalizeState(parsed);
-  } catch {
+  } catch (error) {
+    console.warn("loadState failed, falling back to initial state:", error);
     return createInitialState();
   }
 }
@@ -921,8 +924,6 @@ function normalizeState(input) {
 // mix images and videos (every task carries its own `type`). Older stores
 // that kept image/video sessions and tasks apart are merged here.
 // ---------------------------------------------------------------------------
-const UNIFIED_VISUAL_VERSION = 1;
-const VIDEO_MEDIA_PATTERN = /(^data:video\/|\.(mp4|webm|mov|m4v)(\?|#|$))/i;
 
 function mostRecentById(items) {
   let best = null;
