@@ -656,7 +656,7 @@ test("third-party Grok 3 models support every duration from 1 through 15 seconds
   });
 
   const repaired = buildVideo("grok-video-3", "xai", {
-    videoAspectRatio: "21:9",
+    videoAspectRatio: "5:4",
     videoResolution: "1080p",
     videoDuration: 15,
   });
@@ -667,7 +667,7 @@ test("third-party Grok 3 models support every duration from 1 through 15 seconds
 test("official Grok Imagine video models keep the JSON generation contract", () => {
   const quality = buildVideo("grok-imagine-video-1.5", "xai", { videoResolution: "1080p" });
   assert.equal(quality.endpoint, "/v1/videos/generations");
-  assert.equal(JSON.parse(quality.body).resolution, "720p");
+  assert.equal(JSON.parse(quality.body).resolution, "1080p");
 });
 
 test("Sub2API Grok Imagine defaults to OpenAI Multipart video requests", () => {
@@ -707,12 +707,12 @@ test("official Grok Imagine controls expose only documented video parameters", (
   setTestSettings({
     baseUrl: "https://ai.linkmesh.org",
     videoModel: "grok-imagine-video-1.5",
-    videoAspectRatio: "3:2",
+    videoAspectRatio: "5:4",
     videoResolution: "1080p",
     videoDuration: 20,
   });
-  assert.deepEqual(videoAspectOptionsForModel().map((option) => option.value), ["1:1", "16:9", "9:16"]);
-  assert.deepEqual(videoResolutionOptionsForModel().map((option) => option.value), ["480p", "720p"]);
+  assert.deepEqual(videoAspectOptionsForModel().map((option) => option.value), ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9", "5:2"]);
+  assert.deepEqual(videoResolutionOptionsForModel().map((option) => option.value), ["480p", "720p", "1080p"]);
   assert.deepEqual(
     videoDurationOptionsForModel().map((option) => option.value),
     Array.from({ length: 15 }, (_, index) => String(index + 1))
@@ -723,7 +723,7 @@ test("official Grok Imagine controls expose only documented video parameters", (
     vendor: "xAI",
   }).body);
   assert.equal(body.aspect_ratio, "16:9");
-  assert.equal(body.resolution, "720p");
+  assert.equal(body.resolution, "1080p");
   assert.equal(body.duration, 15);
 });
 
@@ -1107,8 +1107,8 @@ test("Kling controls and polling match the provider contract", () => {
   setTestDraftMedia({});
   assert.deepEqual(videoDurationOptionsForModel().map((option) => option.value),
     Array.from({ length: 13 }, (_, index) => String(index + 3)));
-  assert.deepEqual(videoResolutionOptionsForModel().map((option) => option.value), ["720p", "1080p"]);
-  assert.deepEqual(videoAspectOptionsForModel().map((option) => option.value), ["16:9", "9:16"]);
+  assert.deepEqual(videoResolutionOptionsForModel().map((option) => option.value), ["720p", "1080p", "4k"]);
+  assert.deepEqual(videoAspectOptionsForModel().map((option) => option.value), ["16:9", "9:16", "1:1"]);
   assert.equal(normalizeKlingDuration(2), 3);
   assert.equal(normalizeKlingDuration(16), 15);
   assert.equal(videoStatusEndpointForTask({ provider: "kling" }), "/tasks?task_ids={id}");
@@ -1177,7 +1177,7 @@ test("Veo 2 omits its unsupported resolution parameter", () => {
     videoResolution: "1080p",
   });
   const body = JSON.parse(request.body);
-  assert.deepEqual(body.parameters, { aspectRatio: "16:9", durationSeconds: 6 });
+  assert.deepEqual(body.parameters, { aspectRatio: "16:9", durationSeconds: 7 });
 });
 
 test("Veo 3.1 Lite is restricted to its supported 720p output", () => {
@@ -1204,20 +1204,20 @@ test("Sora-2 text generation uses multipart duration aliases", () => {
   assert.equal(request.body.get("model"), "sora-2");
   assert.equal(request.body.get("size"), "1280x720");
   assert.equal(request.body.get("seconds"), "12");
-  assert.equal(request.body.get("duration"), "12");
+  assert.equal(request.body.get("duration"), null);
   const task = { provider: "sora", requestEndpoint: request.endpoint };
   assert.equal(videoStatusEndpointForTask(task), "/v1/videos/{id}");
   assert.equal(videoStatusHeadersForTask(task).Authorization, "Bearer test-key");
 });
 
-test("Sora-2 fixes old duration settings to the upstream 12-second default and filters Sora-2 Pro", () => {
+test("Sora-2 snaps durations to the cookbook list, repairs sizes, and filters Sora-2 Pro from model lists", () => {
   const request = buildVideo("sora-2", "sora", {
     videoAspectRatio: "9:16",
     videoDuration: 10,
   });
   assert.equal(request.body.get("size"), "1280x720");
-  assert.equal(request.body.get("seconds"), "12");
-  assert.equal(request.body.get("duration"), "12");
+  assert.equal(request.body.get("seconds"), "8");
+  assert.equal(request.body.get("duration"), null);
 
   const records = normalizeModelRecords([
     { id: "sora-2", type: "model" },
@@ -1236,8 +1236,8 @@ test("Sora-2 image generation retains multipart input and duration fields", () =
   assert.equal(request.body instanceof FormData, true);
   assert.equal(request.headers.Authorization, "Bearer test-key");
   assert.equal(request.body.get("size"), "1280x720");
-  assert.equal(request.body.get("seconds"), "12");
-  assert.equal(request.body.get("duration"), "12");
+  assert.equal(request.body.get("seconds"), "4");
+  assert.equal(request.body.get("duration"), null);
   assert.equal(request.body.get("input_reference") instanceof Blob, true);
 });
 

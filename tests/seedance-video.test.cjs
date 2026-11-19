@@ -231,7 +231,7 @@ test("Seedance 2.5 exposes the official resolution, ratio, and duration ranges",
   build(model, { videoResolution: "720p", videoAspectRatio: "adaptive", videoDuration: -1 });
 
   assert.equal(isSeedance25Model(model), true);
-  assert.deepEqual(videoResolutionOptionsForModel().map((option) => option.value), ["480p", "720p", "1080p"]);
+  assert.deepEqual(videoResolutionOptionsForModel().map((option) => option.value), ["480p", "720p", "1080p", "4k"]);
   assert.deepEqual(videoAspectOptionsForModel().map((option) => option.value), [
     "adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16",
   ]);

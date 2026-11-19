@@ -67,11 +67,12 @@ test("r26 coke/canopus revert to the Volcengine Seedance 2.0 profile (as in r25)
 test("r26 muse summary hides resolution; panel markup and version", () => {
   const src = fs.readFileSync("app.js", "utf8");
   assert.match(src, /videoResolutionRow\.hidden = usesPixelSize \|\| isMuse/);
-  assert.match(src, /videoAudioRow\.hidden = .*\|\| isMuse/);
+  assert.match(src, /videoAudioRow\.hidden = videoAudioRowHidden\(/);
+  assert.match(src, /function videoAudioRowHidden[\s\S]*?isMuseVideoModel\(modelId\)/);
   const html = fs.readFileSync("index.html", "utf8");
   assert.match(html, /id="videoCameraMotionGroup"/);
-  assert.match(html, /app\.js\?v=20261119-r26/);
-  assert.match(html, /styles\.css\?v=20261119-r26/);
+  assert.match(html, /app\.js\?v=20261119-r27/);
+  assert.match(html, /styles\.css\?v=20261119-r27/);
 });
 
 test("r26 muse: default endpoints align to /v1/videos, custom kept", () => {

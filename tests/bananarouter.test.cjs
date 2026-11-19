@@ -182,7 +182,7 @@ test("Grok Imagine image generation uses official aspect ratio and resolution fi
   const request = buildImageRequest("未来城市", [], false);
   const body = JSON.parse(request.body);
 
-  assert.deepEqual(imageAspectOptionsForModel().map((option) => option.value), ["9:16", "16:9", "2:3", "3:2", "1:1"]);
+  assert.deepEqual(imageAspectOptionsForModel().map((option) => option.value), ["auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "2:1", "1:2", "19.5:9", "9:19.5", "20:9", "9:20", "21:9", "5:2"]);
   assert.deepEqual(imageQualityOptionsForModel().map((option) => option.value), ["1k", "2k"]);
   assert.equal(request.endpoint, "/v1/images/generations");
   assert.deepEqual(body, {

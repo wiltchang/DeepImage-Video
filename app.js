@@ -1998,6 +1998,30 @@ const COUNT_SETTING_OPTIONS = Array.from({ length: 4 }, (_, index) => ({
   value: String(index + 1),
   label: String(index + 1),
 }));
+const COUNT_SETTING_OPTIONS_10 = Array.from({ length: 10 }, (_, index) => ({
+  value: String(index + 1),
+  label: String(index + 1),
+}));
+const KLING_ASPECTS = ["16:9", "9:16", "1:1"];
+const SORA_DURATIONS = [4, 8, 12, 16, 20];
+const SORA_SIZES_STANDARD = ["720x1280", "1280x720"];
+const SORA_SIZES_PRO = ["720x1280", "1280x720", "1024x1792", "1792x1024", "1080x1920", "1920x1080"];
+const GROK_VIDEO_ASPECTS = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9", "5:2"];
+const GROK_IMAGE_ASPECTS = ["auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "2:1", "1:2", "19.5:9", "9:19.5", "20:9", "9:20", "21:9", "5:2"];
+const GROK_IMAGE_EDIT_MAX_SOURCES = 5;
+const SEEDANCE20_MAX_REFERENCE_IMAGES = 9;
+const SEEDANCE20_MAX_REFERENCE_VIDEOS = 3;
+const SEEDANCE25_MAX_REFERENCE_VIDEOS = 10;
+
+// r27: image count ceiling per model (gpt-image family / grok image 10, dall-e-3 fixed 1, others 4).
+function imageCountLimit(modelId = state.settings.imageModel) {
+  if (String(modelId || "").toLowerCase() === "dall-e-3") return 1;
+  if (isGptImageModel(modelId) || isGrokImagineImageModel(modelId)) return 10;
+  return 4;
+}
+function effectiveImageCount(modelId = state.settings.imageModel) {
+  return clampNumber(state.settings.imageCount, 1, imageCountLimit(modelId), 1);
+}
 
 // Canonical tier names for size/resolution档位 (BoostMax style: 标清/高清/超清).
 const SIZE_TIER_NAMES = {
@@ -2062,7 +2086,7 @@ function renderOutputOptions() {
   }
   renderOptionGroup(els.imageWatermarkGroup, "imageWatermark", BOOL_SETTING_OPTIONS, String(!!state.settings.imageWatermark));
   renderOptionGroup(els.imageSequentialGroup, "imageSequential", BOOL_SETTING_OPTIONS, String(!!state.settings.imageSequential));
-  renderOptionGroup(els.imageCountGroup, "imageCount", COUNT_SETTING_OPTIONS, String(isDallE3 ? 1 : state.settings.imageCount), {
+  renderOptionGroup(els.imageCountGroup, "imageCount", imageCountLimit() > 4 ? COUNT_SETTING_OPTIONS_10 : COUNT_SETTING_OPTIONS, String(effectiveImageCount()), {
     disabled: isDallE3,
     disabledReason: "DALL-E 3 每次仅生成 1 张",
   });
@@ -2083,7 +2107,7 @@ function renderOutputOptions() {
   if (videoCountRow) videoCountRow.hidden = !isSeedanceModel(state.settings.videoModel);
   const documentedVeo31 = isDocumentedVeo31Model(state.settings.videoModel);
   if (videoStyleRow) videoStyleRow.hidden = false;
-  if (videoAudioRow) videoAudioRow.hidden = usesOfficialGrokRequest || documentedVeo31 || isMuse;
+  if (videoAudioRow) videoAudioRow.hidden = videoAudioRowHidden(state.settings.videoModel);
   if (isMuse) {
     renderOptionGroup(els.videoCameraMotionGroup, "videoCameraMotion", MUSE_CAMERA_MOTION_OPTIONS, museCameraMotion());
   }
@@ -2321,7 +2345,7 @@ function settingsSummaryParts() {
   const modelId = state.settings.imageModel;
   const parts = [optionLabelForValue(imageAspectOptionsForModel(), effectiveImageAspectRatio())];
   parts.push(optionSummaryLabel(imageSizeOptionsWithDims(), effectiveImageOutputSize()));
-  const imageCount = modelId === "dall-e-3" ? 1 : state.settings.imageCount;
+  const imageCount = effectiveImageCount(modelId);
   if (imageCount > 1) parts.push(`${imageCount} 张`);
   return parts;
 }
@@ -2361,7 +2385,7 @@ function updateMoreSettingsIndicator() {
       [els.imageStyleGroup, () => state.settings.imageStyle, DEFAULT_SETTINGS.imageStyle],
       [els.imageWatermarkGroup, () => !!state.settings.imageWatermark, DEFAULT_SETTINGS.imageWatermark],
       [els.imageSequentialGroup, () => !!state.settings.imageSequential, DEFAULT_SETTINGS.imageSequential],
-      [els.imageCountGroup, () => (state.settings.imageModel === "dall-e-3" ? 1 : state.settings.imageCount), DEFAULT_SETTINGS.imageCount],
+      [els.imageCountGroup, () => effectiveImageCount(), DEFAULT_SETTINGS.imageCount],
     ]],
     [els.videoMoreSettings, [
       [els.videoStyleGroup, () => state.settings.videoStyle, DEFAULT_SETTINGS.videoStyle],
@@ -2467,7 +2491,7 @@ function imageSizeOptionsForModel() {
 
 function imageAspectOptionsForModel(modelId = state.settings.imageModel) {
   if (isGrokImagineImageModel(modelId)) {
-    return ["9:16", "16:9", "2:3", "3:2", "1:1"].map((value) => ({ value, label: value }));
+    return GROK_IMAGE_ASPECTS.map((value) => ({ value, label: value === "auto" ? "自动" : value }));
   }
   if (supportsGeminiNativeImageConfig(modelId)) {
     const id = String(modelId || "").toLowerCase();
@@ -2496,6 +2520,7 @@ function imageQualityOptionsForModel() {
       { value: "2k", label: "2K" },
     ];
   }
+  if (isSeedreamModel(model?.id)) return []; // r27: no quality field upstream
   if (model?.id === "dall-e-3") {
     return IMAGE_QUALITY_OPTIONS.filter((option) => ["standard", "hd"].includes(option.value));
   }
@@ -2517,13 +2542,13 @@ function imageQualityOptionsForModel() {
 function videoResolutionOptionsForModel() {
   const modelId = state.settings.videoModel;
   if (isKlingModel(modelId)) {
-    return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["720p", "1080p"].includes(option.value));
+    return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["720p", "1080p", "4k"].includes(option.value));
   }
   if (isMuseVideoModel(modelId)) {
     return VIDEO_RESOLUTION_OPTIONS.filter((option) => option.value === "720p");
   }
   if (isSeedance25Model(modelId)) {
-    return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["480p", "720p", "1080p"].includes(option.value));
+    return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["480p", "720p", "1080p", "4k"].includes(option.value));
   }
   if (isSeedance2FastModel(modelId)) {
     return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["480p", "720p"].includes(option.value));
@@ -2532,7 +2557,7 @@ function videoResolutionOptionsForModel() {
     return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["480p", "720p", "1080p", "4k"].includes(option.value));
   }
   if (isGrokVideoModel(modelId)) {
-    const supported = ["480p", "720p"];
+    const supported = isGrokImagine15Model(modelId) ? ["480p", "720p", "1080p"] : ["480p", "720p"];
     return VIDEO_RESOLUTION_OPTIONS.filter((option) => supported.includes(option.value));
   }
   if (isDocumentedVeo31Model(modelId)) {
@@ -2550,16 +2575,19 @@ function videoResolutionOptionsForModel() {
 function videoAspectOptionsForModel() {
   const modelId = state.settings.videoModel;
   if (isKlingModel(modelId)) {
-    return VIDEO_ASPECT_OPTIONS.filter((option) => ["16:9", "9:16"].includes(option.value));
+    return VIDEO_ASPECT_OPTIONS.filter((option) => KLING_ASPECTS.includes(option.value));
   }
   if (isMuseVideoModel(modelId)) {
     return MUSE_VIDEO_ASPECT_OPTIONS.map((value) => ({ value, label: value }));
   }
-  if (isSora2Model(modelId)) {
-    return [{ value: "1280x720", label: "1280x720" }];
+  if (isSoraVideoModel(modelId)) {
+    return soraSizesForModel(modelId).map((value) => ({ value, label: value }));
   }
   if (usesDeepRouterVeoCompatibility(modelId)) {
     return ["1920x1080", "1080x1920"].map((value) => ({ value, label: value }));
+  }
+  if (isSeedance25Model(modelId) && hasSeedance25FrameInputs()) {
+    return [{ value: "adaptive", label: "自适应" }];
   }
   if (isSeedance2Model(modelId) || isSeedance25Model(modelId)) {
     return ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]
@@ -2569,10 +2597,7 @@ function videoAspectOptionsForModel() {
     return VIDEO_ASPECT_OPTIONS.filter((option) => ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].includes(option.value));
   }
   if (isGrokVideoModel(modelId)) {
-    if (isGrokImagineVideoModel(modelId)) {
-      return ["1:1", "16:9", "9:16"].map((value) => ({ value, label: value }));
-    }
-    return ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"].map((value) => ({ value, label: value }));
+    return GROK_VIDEO_ASPECTS.map((value) => ({ value, label: value }));
   }
   if (isDocumentedVeo31ReferenceMode(modelId)) {
     return [{ value: "16:9", label: "16:9" }];
@@ -2596,8 +2621,8 @@ function videoDurationOptionsForModel() {
       return { value: seconds, label: `${seconds}s` };
     });
   }
-  if (isSora2Model(modelId)) {
-    return [{ value: "12", label: "12s" }];
+  if (isSoraVideoModel(modelId)) {
+    return SORA_DURATIONS.map((seconds) => ({ value: String(seconds), label: `${seconds}s` }));
   }
   if (isGrokVideoModel(modelId)) {
     return GROK_VIDEO_DURATIONS.map((seconds) => ({ value: String(seconds), label: `${seconds}s` }));
@@ -2609,7 +2634,7 @@ function videoDurationOptionsForModel() {
     return [{ value: "8", label: "8s" }];
   }
   if (isVeoModel(modelId)) {
-    const durations = isVeo2Model(modelId) ? [5, 6, 8] : [4, 6, 8];
+    const durations = isVeo2Model(modelId) ? [5, 6, 7, 8] : [4, 6, 8];
     return durations.map((seconds) => ({ value: String(seconds), label: `${seconds}s` }));
   }
   if (isSeedance25Model(modelId)) {
@@ -2708,6 +2733,11 @@ function isGrokImagine15Model(modelId) {
   return /grok[-_.]?imagine[-_.]?video[-_.]?1(?:[-_.]?5|\.5)/i.test(String(modelId || ""));
 }
 
+function videoAudioRowHidden(modelId) {
+  return isGrokVideoModel(modelId) || isDocumentedVeo31Model(modelId) || isMuseVideoModel(modelId)
+    || isSoraVideoModel(modelId) || isVeoModel(modelId);
+}
+
 function isVeoModel(modelId) {
   return /(?:^|[-_.])veo(?:[-_.]|\d|$)/i.test(String(modelId || ""));
 }
@@ -2742,6 +2772,14 @@ function isVeo31LiteModel(modelId) {
 
 function isSora2Model(modelId) {
   return /(?:^|[-_.])sora[-_.]?2(?:$|[-_.])/i.test(String(modelId || "")) && !isSora2ProModel(modelId);
+}
+
+function isSoraVideoModel(modelId) {
+  return isSora2Model(modelId) || isSora2ProModel(modelId);
+}
+
+function soraSizesForModel(modelId) {
+  return isSora2ProModel(modelId) ? SORA_SIZES_PRO : SORA_SIZES_STANDARD;
 }
 
 function isSora2ProModel(modelId) {
@@ -2791,15 +2829,15 @@ function usesNewApiVeoTask(modelId = state.settings.videoModel) {
 }
 
 function usesPixelVideoSizeOptions(modelId = state.settings.videoModel) {
-  return isSora2Model(modelId) || usesDeepRouterVeoCompatibility(modelId);
+  return isSoraVideoModel(modelId) || usesDeepRouterVeoCompatibility(modelId);
 }
 
 function effectiveVideoAspectRatio(modelId = state.settings.videoModel) {
   const ratio = state.settings.videoAspectRatio;
   if (isMuseVideoModel(modelId)) return MUSE_VIDEO_ASPECT_OPTIONS.includes(ratio) ? ratio : "16:9";
-  if (isKlingModel(modelId)) return ["16:9", "9:16"].includes(ratio) ? ratio : "16:9";
-  if (isSora2Model(modelId)) {
-    return "1280x720";
+  if (isKlingModel(modelId)) return KLING_ASPECTS.includes(ratio) ? ratio : "16:9";
+  if (isSoraVideoModel(modelId)) {
+    return soraSizesForModel(modelId).includes(ratio) ? ratio : "1280x720";
   }
   if (usesDeepRouterVeoCompatibility(modelId)) {
     if (["1920x1080", "1080x1920"].includes(ratio)) return ratio;
@@ -2813,10 +2851,7 @@ function effectiveVideoAspectRatio(modelId = state.settings.videoModel) {
     return ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].includes(ratio) ? ratio : "16:9";
   }
   if (isGrokVideoModel(modelId)) {
-    if (isGrokImagineVideoModel(modelId)) {
-      return ["1:1", "16:9", "9:16"].includes(ratio) ? ratio : "16:9";
-    }
-    return ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"].includes(ratio) ? ratio : "16:9";
+    return GROK_VIDEO_ASPECTS.includes(ratio) ? ratio : "16:9";
   }
   if (isDocumentedVeo31ReferenceMode(modelId)) return "16:9";
   if (isVeoModel(modelId)) return ["16:9", "9:16"].includes(ratio) ? ratio : "16:9";
@@ -2826,12 +2861,13 @@ function effectiveVideoAspectRatio(modelId = state.settings.videoModel) {
 function effectiveVideoResolution(modelId = state.settings.videoModel) {
   const resolution = state.settings.videoResolution;
   if (isMuseVideoModel(modelId)) return "720p";
-  if (isKlingModel(modelId)) return ["720p", "1080p"].includes(resolution) ? resolution : "720p";
-  if (isSeedance25Model(modelId)) return ["480p", "720p", "1080p"].includes(resolution) ? resolution : "720p";
+  if (isKlingModel(modelId)) return ["720p", "1080p", "4k"].includes(resolution) ? resolution : "720p";
+  if (isSeedance25Model(modelId)) return ["480p", "720p", "1080p", "4k"].includes(resolution) ? resolution : "720p";
   if (isSeedance2FastModel(modelId)) return ["480p", "720p"].includes(resolution) ? resolution : "720p";
   if (isSeedance2Model(modelId)) return ["480p", "720p", "1080p", "4k"].includes(resolution) ? resolution : "720p";
   if (isGrokVideoModel(modelId)) {
-    return ["480p", "720p"].includes(resolution) ? resolution : "720p";
+    const supported = isGrokImagine15Model(modelId) ? ["480p", "720p", "1080p"] : ["480p", "720p"];
+    return supported.includes(resolution) ? resolution : "720p";
   }
   if (isDocumentedVeo31Model(modelId)) return ["720p", "1080p"].includes(resolution) ? resolution : "720p";
   if (isVeo2Model(modelId) || isVeo31LiteModel(modelId)) return "720p";
@@ -2865,7 +2901,7 @@ function effectiveVideoDuration(modelId = state.settings.videoModel) {
     if (isSeedance25Model(modelId) && draftMedia.videoReferences.length) return -1;
     return normalizeSeedDanceDuration(state.settings.videoDuration, modelId);
   }
-  if (isSora2Model(modelId)) return normalizeSora2Duration(state.settings.videoDuration, modelId);
+  if (isSoraVideoModel(modelId)) return normalizeSora2Duration(state.settings.videoDuration, modelId);
   if (isGrokVideoModel(modelId)) return normalizeGrokVideoDuration(state.settings.videoDuration, modelId);
   if (isVeoModel(modelId)) return normalizeVeoDuration(state.settings.videoDuration, modelId);
   return clampNumber(state.settings.videoDuration, 1, 30, 5);
@@ -2888,11 +2924,13 @@ function normalizeKlingDuration(value) {
 }
 
 function normalizeSora2Duration(value, modelId = state.settings.videoModel) {
-  return 12;
+  const duration = Number(value);
+  if (!Number.isFinite(duration)) return 12;
+  return SORA_DURATIONS.reduce((closest, option) => Math.abs(option - duration) < Math.abs(closest - duration) ? option : closest, SORA_DURATIONS[0]);
 }
 
 function normalizeVeoDuration(value, modelId = state.settings.videoModel) {
-  const allowed = isVeo2Model(modelId) ? [5, 6, 8] : [4, 6, 8];
+  const allowed = isVeo2Model(modelId) ? [5, 6, 7, 8] : [4, 6, 8];
   const duration = Number(value);
   if (usesDeepRouterVeoCompatibility(modelId)) return 8;
   if (isDocumentedVeo31Model(modelId)) {
@@ -2953,7 +2991,8 @@ function imageStyleOptionsForModel() {
 function setVisualOption(key, value) {
   if (!Object.prototype.hasOwnProperty.call(DEFAULT_SETTINGS, key)) return;
   if (key === "videoDuration") state.settings[key] = effectiveVideoDurationForValue(value);
-  else if (key === "videoCount" || key === "imageCount") state.settings[key] = clampNumber(value, 1, 4, 1);
+  else if (key === "videoCount") state.settings[key] = clampNumber(value, 1, 4, 1);
+  else if (key === "imageCount") state.settings[key] = clampNumber(value, 1, imageCountLimit(state.settings.imageModel), 1);
   else if (key === "videoAudio" || key === "imageWatermark" || key === "imageSequential") state.settings[key] = value === "true";
   else if (key === "imageQuality") state.settings[key] = normalizeImageQualityForModel(state.settings.imageModel, value);
   else state.settings[key] = value;
@@ -2968,7 +3007,7 @@ function effectiveVideoDurationForValue(value) {
   if (isMuseVideoModel(modelId)) return normalizeMuseDuration(value, modelId);
   if (isKlingModel(modelId)) return normalizeKlingDuration(value);
   if (profile?.provider === "seedance") return normalizeSeedDanceDuration(value, modelId);
-  if (isSora2Model(modelId)) return normalizeSora2Duration(value, modelId);
+  if (isSoraVideoModel(modelId)) return normalizeSora2Duration(value, modelId);
   if (isGrokVideoModel(modelId)) return normalizeGrokVideoDuration(value, modelId);
   if (isVeoModel(modelId)) return normalizeVeoDuration(value, modelId);
   return clampNumber(value, 1, 30, 5);
@@ -3923,7 +3962,7 @@ function imageTaskParams(isEdit) {
     aspectRatio: effectiveImageAspectRatio(settings.imageModel),
     quality: normalizeImageQualityForModel(settings.imageModel, settings.imageQuality),
     style: settings.imageStyle,
-    count: clampNumber(settings.imageCount, 1, 4, 1),
+    count: effectiveImageCount(settings.imageModel),
   };
 }
 
@@ -4043,13 +4082,13 @@ function buildGrokImageRequest(prompt, references, isEdit, model) {
   const payload = {
     model: settings.imageModel,
     prompt,
-    n: clampNumber(settings.imageCount, 1, 4, 1),
+    n: clampNumber(settings.imageCount, 1, 10, 1),
     aspect_ratio: effectiveImageAspectRatio(settings.imageModel),
     resolution: grokImageResolution(),
     response_format: "url",
   };
   if (editing) {
-    const images = references.slice(0, 8).map((reference) => ({ url: reference.dataUrl }));
+    const images = references.slice(0, GROK_IMAGE_EDIT_MAX_SOURCES).map((reference) => ({ url: reference.dataUrl }));
     if (images.length === 1) payload.image = images[0];
     else payload.images = images;
   }
@@ -4077,7 +4116,7 @@ function buildOpenAIImageGenerationRequest(prompt, model) {
     model: settings.imageModel,
     prompt: imagePromptWithSelectedStyle(prompt, settings.imageModel),
     size: imageRequestSize(settings.imageModel),
-    n: model?.id === "dall-e-3" ? 1 : clampNumber(settings.imageCount, 1, 4, 1),
+    n: model?.id === "dall-e-3" ? 1 : clampNumber(settings.imageCount, 1, imageCountLimit(settings.imageModel), 1),
   };
   if (!isGptImage) payload.response_format = "url";
   applyImageTuning(payload, model, "openai");
@@ -4246,7 +4285,7 @@ function buildOpenAIImageEditRequest(prompt, references) {
   form.append("model", settings.imageModel);
   form.append("prompt", imagePromptWithSelectedStyle(prompt, settings.imageModel));
   form.append("size", imageRequestSize(settings.imageModel));
-  form.append("n", String(model?.id === "dall-e-3" ? 1 : clampNumber(settings.imageCount, 1, 4, 1)));
+  form.append("n", String(model?.id === "dall-e-3" ? 1 : clampNumber(settings.imageCount, 1, imageCountLimit(settings.imageModel), 1)));
   const quality = normalizeImageQualityForModel(settings.imageModel, settings.imageQuality);
   if (quality !== "auto") form.append("quality", normalizeQualityForModel(quality, model));
   if (isGptImageModel(settings.imageModel)) {
@@ -4740,6 +4779,7 @@ function klingImageContent(type, item, id) {
 function buildSeedDanceVideoRequest(prompt, profile) {
   const settings = state.settings;
   const modelId = settings.videoModel;
+  assertSeedanceMaterialLimits(modelId);
   const seedance25 = isSeedance25Model(modelId);
   const duration = effectiveVideoDuration(modelId);
   const automaticDuration = duration === -1;
@@ -4824,6 +4864,28 @@ function buildSeedDanceVideoRequest(prompt, profile) {
   };
 }
 
+function hasSeedance25FrameInputs() {
+  return Boolean(draftMedia.firstFrame || draftMedia.lastFrame);
+}
+
+// r27: official per-request material ceilings (throws a readable error at build time).
+function assertSeedanceMaterialLimits(modelId) {
+  const images = draftMedia.videoImages.length;
+  const videos = draftMedia.videoReferences.length;
+  if (isSeedance25Model(modelId)) {
+    if (videos > SEEDANCE25_MAX_REFERENCE_VIDEOS) {
+      throw new Error(`Seedance 2.5 参考视频最多 ${SEEDANCE25_MAX_REFERENCE_VIDEOS} 个，当前 ${videos} 个，请删减后再试`);
+    }
+  } else if (isSeedance2Model(modelId)) {
+    if (images > SEEDANCE20_MAX_REFERENCE_IMAGES) {
+      throw new Error(`Seedance 2.0 参考图最多 ${SEEDANCE20_MAX_REFERENCE_IMAGES} 张，当前 ${images} 张，请删减后再试`);
+    }
+    if (videos > SEEDANCE20_MAX_REFERENCE_VIDEOS) {
+      throw new Error(`Seedance 2.0 参考视频最多 ${SEEDANCE20_MAX_REFERENCE_VIDEOS} 个，当前 ${videos} 个，请删减后再试`);
+    }
+  }
+}
+
 function hasSeedance25MediaInputs() {
   return Boolean(
     draftMedia.firstFrame
@@ -4901,7 +4963,7 @@ function buildGrokJsonVideoRequest(prompt, profile, endpoint) {
   };
   const images = [draftMedia.firstFrame, ...draftMedia.videoImages, draftMedia.lastFrame].filter(Boolean);
   if (images.length === 1) body.image = { url: images[0].dataUrl };
-  else if (images.length > 1) body.reference_images = images.slice(0, 4).map((item) => ({ url: item.dataUrl }));
+  else if (images.length > 1) body.reference_images = images.slice(0, isGrokImagine15Model(settings.videoModel) ? 14 : 7).map((item) => ({ url: item.dataUrl }));
   return {
     label: `${profile?.vendor || "xAI"} 官方视频生成`,
     endpoint,
@@ -4960,7 +5022,6 @@ function buildSoraVideoRequest(prompt, profile) {
   form.append("model", settings.videoModel);
   form.append("prompt", prompt);
   form.append("seconds", String(duration));
-  form.append("duration", String(duration));
   form.append("size", size);
   if (reference?.file) form.append("input_reference", reference.file, reference.name);
   else if (reference?.dataUrl) form.append("input_reference", reference.dataUrl);
@@ -5874,7 +5935,7 @@ function applyVisualTaskSettings(task) {
     if (params.size) state.settings.imageSize = params.size;
     if (params.quality) state.settings.imageQuality = params.quality;
     if (params.style) state.settings.imageStyle = params.style;
-    if (params.count) state.settings.imageCount = clampNumber(params.count, 1, 4, state.settings.imageCount);
+    if (params.count) state.settings.imageCount = clampNumber(params.count, 1, imageCountLimit(task.model || state.settings.imageModel), state.settings.imageCount);
   }
   if (task.model) state.modelOptions = unique([task.model, ...state.modelOptions]);
 }
@@ -7451,7 +7512,7 @@ function inferModelProfile(modelId, raw = {}) {
       capabilities: ["文生视频", "图生视频"],
     };
   }
-  if (isSora2Model(id)) return { id: modelId, label: modelId, vendor: "OpenAI", type: "video", provider: "sora", capabilities: ["视频"] };
+  if (isSoraVideoModel(id)) return { id: modelId, label: modelId, vendor: "OpenAI", type: "video", provider: "sora", capabilities: ["视频"] };
   if (id.includes("veo")) return { id: modelId, label: modelId, vendor: "Google", type: "video", provider: "veo", capabilities: ["视频"] };
   if (id.includes("seedance")) return { id: modelId, label: modelId, vendor: "Doubao", type: "video", provider: "seedance", capabilities: ["视频"] };
   if (isMuseVideoModel(id)) {
@@ -7546,7 +7607,7 @@ function inferProvider(id, owner = "") {
   const model = String(id || "").toLowerCase();
   if (isMuseVideoModel(model)) return "muse";
   if (/kling/.test(model)) return "kling";
-  if (isSora2Model(model)) return "sora";
+  if (isSoraVideoModel(model)) return "sora";
   if (/seedance/.test(model)) return "seedance";
   if (/seedream|doubao|jimeng/.test(model)) return "seed";
   if (/xai|grok/.test(model)) return "xai";
@@ -7888,6 +7949,7 @@ if (typeof module !== "undefined" && module.exports) {
     materializeVideoUrls,
     videoResultUrlsForTask,
     imageAspectOptionsForModel,
+    imageCountLimit,
     imageSizeOptionsForModel,
     imageQualityOptionsForModel,
     imageStyleOptionsForModel,
@@ -7950,6 +8012,10 @@ if (typeof module !== "undefined" && module.exports) {
     videoPromptWithSelectedStyle,
     videoStatusEndpointForTask,
     videoStatusHeadersForTask,
+    setVisualOption,
+    getTestSettings() {
+      return state.settings;
+    },
     setTestSettings(settings) {
       state.settings = { ...DEFAULT_SETTINGS, ...settings };
     },
@@ -8001,6 +8067,7 @@ if (typeof module !== "undefined" && module.exports) {
       state.visualTasks = tasks;
       activeVisualSessionId = activeId;
     },
+    videoAudioRowHidden,
     setTestDraftMedia(media) {
       draftMedia = { ...createEmptyDraftMedia(), ...media };
     },
