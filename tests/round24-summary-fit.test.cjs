@@ -13,7 +13,7 @@ test("r24 css: desktop content-sized / 60% rebalance removed (superseded by r25 
 
 test("r24 html: version bumped and chat chip untouched by visual-workspace rules", () => {
   const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
-  assert.match(html, /\?v=20261119-r27/);
+  assert.match(html, /\?v=20261119-r28/);
   assert.doesNotMatch(block.replace(/\.workspace\.visual-workspace/g, ""), /not\(\.visual-workspace\)/);
   assert.ok(!/^\s*\.model-picker-trigger/m.test(block));
 });

@@ -71,8 +71,8 @@ test("r26 muse summary hides resolution; panel markup and version", () => {
   assert.match(src, /function videoAudioRowHidden[\s\S]*?isMuseVideoModel\(modelId\)/);
   const html = fs.readFileSync("index.html", "utf8");
   assert.match(html, /id="videoCameraMotionGroup"/);
-  assert.match(html, /app\.js\?v=20261119-r27/);
-  assert.match(html, /styles\.css\?v=20261119-r27/);
+  assert.match(html, /app\.js\?v=20261119-r28/);
+  assert.match(html, /styles\.css\?v=20261119-r28/);
 });
 
 test("r26 muse: default endpoints align to /v1/videos, custom kept", () => {

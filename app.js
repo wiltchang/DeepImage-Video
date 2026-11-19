@@ -5631,7 +5631,8 @@ function renderVisualTask(task) {
     error.textContent = task.error || (task.status === "empty" ? "接口未返回媒体结果" : statusLabel(task.status));
     mediaWrap.appendChild(error);
   } else {
-    (task.media || []).forEach((src) => mediaWrap.appendChild(task.type === "video" ? renderVideo(src, task) : renderImage(src, task)));
+    const mediaList = task.type === "video" ? collapseVideoUrls(task.media || []) : (task.media || []);
+    mediaList.forEach((src) => mediaWrap.appendChild(task.type === "video" ? renderVideo(src, task) : renderImage(src, task)));
   }
   card.appendChild(mediaWrap);
 
@@ -7131,9 +7132,47 @@ function extractVideoUrls(data) {
     }
   };
   visit(data, "root");
-  const candidates = unique(urls);
+  const candidates = collapseVideoUrls(unique(urls));
   const directlyPlayable = candidates.filter((url) => !isAuthenticatedVideoProxyUrl(url));
   return directlyPlayable.length ? directlyPlayable : candidates;
+}
+
+// One task = one video: several addresses in one response are routes to the same file.
+function collapseVideoUrls(list) {
+  const items = unique(Array.isArray(list) ? list.filter(Boolean) : []);
+  const isContent = (url) => /\/v1\/videos\/[^/?#]+\/content\/?(?:[?#]|$)/i.test(String(url));
+  const directName = (url) => {
+    const text = String(url);
+    if (text.startsWith("data:")) return "";
+    const path = text.split(/[?#]/)[0];
+    if (!/\.(?:mp4|webm|mov|m3u8)$/i.test(path)) return "";
+    return decodeURIComponentSafe(path.split("/").pop()).toLowerCase();
+  };
+  const hasDirect = items.some((url) => directName(url));
+  const seen = new Set();
+  const out = [];
+  let contents = [];
+  items.forEach((url) => {
+    const name = directName(url);
+    if (name) {
+      if (seen.has(name)) return;
+      seen.add(name);
+      out.push(url);
+    } else if (isContent(url)) {
+      contents.push(url);
+    } else {
+      out.push(url);
+    }
+  });
+  if (!hasDirect && contents.length) {
+    const upstream = contents.find((url) => !isAuthenticatedVideoProxyUrl(url));
+    out.unshift(upstream || contents[0]);
+  }
+  return out;
+}
+
+function decodeURIComponentSafe(text) {
+  try { return decodeURIComponent(text); } catch { return text; }
 }
 
 function videoResultUrlsForTask(data, task) {
@@ -7944,6 +7983,8 @@ if (typeof module !== "undefined" && module.exports) {
     extractJobId,
     extractTaskStatus,
     extractVideoUrls,
+    collapseVideoUrls,
+    renderVisualTask,
     fetchVideoTaskResource,
     generatedResultToMedia,
     materializeVideoUrls,
