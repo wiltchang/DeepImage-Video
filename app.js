@@ -289,9 +289,19 @@ const SEEDREAM_SIZE_OPTIONS = [
   { value: "4K", label: "4K" },
 ];
 
-const MUSE_VIDEO_ASPECT_OPTIONS = ["16:9", "9:16", "1:1"];
-const MUSE_VIDEO_RESOLUTION_OPTIONS = ["720p", "1080p"];
-const MUSE_VIDEO_DURATION_OPTIONS = [5, 10];
+// r26: Muse official params (doc.pandatk.com): no resolution parameter, seconds is a string,
+// base `muse-video` takes 1-10, `muse-video-Ns` is fixed to N seconds.
+const MUSE_VIDEO_ASPECT_OPTIONS = ["16:9", "9:16", "1:1", "4:3", "3:4"];
+const MUSE_VIDEO_MAX_SECONDS = 10;
+const MUSE_VIDEO_MAX_REFERENCE_IMAGES = 4;
+const MUSE_CAMERA_MOTION_OPTIONS = [
+  { value: "", label: "不指定" },
+  { value: "zoom_in", label: "推进" },
+  { value: "pan_left", label: "左移" },
+  { value: "orbit", label: "环绕" },
+  { value: "tracking_shot", label: "跟随" },
+  { value: "static", label: "固定" },
+];
 
 const VIDEO_ASPECT_OPTIONS = [
   { value: "16:9", label: "16:9" },
@@ -358,6 +368,7 @@ const DEFAULT_SETTINGS = {
   videoCount: 1,
   videoStyle: "cinematic",
   videoAudio: true,
+  videoCameraMotion: "",
   videoApiStyle: "auto",
   videoEndpoint: "/v1/video/generations",
   videoStatusEndpoint: "/v1/video/generations/{id}",
@@ -480,6 +491,7 @@ function initElements() {
     "videoCountGroup",
     "videoStyleGroup",
     "videoAudioGroup",
+    "videoCameraMotionGroup",
     "settingsSummaryBlock",
     "settingsSummaryLabel",
     "settingsSummaryText",
@@ -853,6 +865,7 @@ function normalizeState(input) {
     settings.videoStatusEndpoint = DEFAULT_SETTINGS.videoStatusEndpoint;
   }
   settings.videoCount = clampNumber(settings.videoCount, 1, 4, 1);
+  settings.videoCameraMotion = typeof settings.videoCameraMotion === "string" ? settings.videoCameraMotion : "";
   if (input.settings?.imageSize && !input.settings?.imageAspectRatio) {
     settings.imageAspectRatio = aspectFromSize(input.settings.imageSize);
   }
@@ -1503,6 +1516,10 @@ function bindEvents() {
     renderControls();
   });
   els.visualContextToggle.addEventListener("click", () => {
+    if (visualContextBlocked()) {
+      showToast(videoMediaBlockedReason("context"), true);
+      return;
+    }
     const session = getActiveVisualSession();
     session.contextEnabled = !isVisualContextEnabled();
     state.settings.visualContext = session.contextEnabled;
@@ -1581,10 +1598,22 @@ function bindEvents() {
   });
   els.stopButton.addEventListener("click", stopRequest);
   els.uploadImageRefButton.addEventListener("click", () => els.imageReferenceFiles.click());
-  els.uploadFirstFrameButton.addEventListener("click", () => els.firstFrameFile.click());
-  els.uploadLastFrameButton.addEventListener("click", () => els.lastFrameFile.click());
-  els.uploadVideoRefButton.addEventListener("click", () => els.videoReferenceFiles.click());
-  els.uploadAudioButton.addEventListener("click", () => els.audioReferenceFile.click());
+  els.uploadFirstFrameButton.addEventListener("click", () => {
+    if (blockedVideoUpload("first-frame")) return;
+    els.firstFrameFile.click();
+  });
+  els.uploadLastFrameButton.addEventListener("click", () => {
+    if (blockedVideoUpload("last-frame")) return;
+    els.lastFrameFile.click();
+  });
+  els.uploadVideoRefButton.addEventListener("click", () => {
+    if (blockedVideoUpload("video-reference")) return;
+    els.videoReferenceFiles.click();
+  });
+  els.uploadAudioButton.addEventListener("click", () => {
+    if (blockedVideoUpload("audio")) return;
+    els.audioReferenceFile.click();
+  });
   els.imageReferenceFiles.addEventListener("change", (event) => handleReferenceFiles(event, "image-reference"));
   els.videoReferenceFiles.addEventListener("change", (event) => handleReferenceFiles(event, "video-reference"));
   els.firstFrameFile.addEventListener("change", (event) => handleReferenceFiles(event, "first-frame"));
@@ -1897,6 +1926,28 @@ function renderControls() {
     || usesDeepRouterDocumentedVeo31Compatibility(state.settings.videoModel);
   els.uploadVideoRefButton.hidden = !isVisual || visualMode !== "video" || grokVideoSelected || klingVideoSelected || documentedVeo31Selected;
   els.uploadAudioButton.hidden = !isVisual || visualMode !== "video" || grokVideoSelected || klingVideoSelected || documentedVeo31Selected;
+  [
+    [els.uploadFirstFrameButton, "first-frame"],
+    [els.uploadLastFrameButton, "last-frame"],
+    [els.uploadVideoRefButton, "video-reference"],
+    [els.uploadAudioButton, "audio"],
+  ].forEach(([button, kind]) => {
+    const reason = isVisual && visualMode === "video" ? videoMediaBlockedReason(kind) : "";
+    button.classList.toggle("is-disabled", !!reason);
+    if (reason) button.setAttribute("aria-disabled", "true");
+    else button.removeAttribute("aria-disabled");
+    if (reason) button.title = reason;
+    else button.removeAttribute("title");
+  });
+  if (visualContextBlocked()) {
+    els.visualContextToggle.classList.remove("active");
+    els.visualContextToggle.classList.add("is-disabled");
+    els.visualContextToggle.setAttribute("aria-disabled", "true");
+    els.visualContextToggle.title = videoMediaBlockedReason("context");
+  } else {
+    els.visualContextToggle.classList.remove("is-disabled");
+    els.visualContextToggle.removeAttribute("aria-disabled");
+  }
   fillQuickModelSelect();
   const selectedModel = activeMode === "image"
     ? state.settings.visualMode === "video"
@@ -2025,11 +2076,17 @@ function renderOutputOptions() {
   const usesOfficialGrokRequest = isGrokVideoModel(state.settings.videoModel);
   const videoAspectLabel = videoAspectRow?.querySelector(":scope > span");
   if (videoAspectLabel) videoAspectLabel.textContent = usesPixelSize ? "尺寸" : "视频比例";
-  if (videoResolutionRow) videoResolutionRow.hidden = usesPixelSize;
+  const isMuse = isMuseVideoModel(state.settings.videoModel);
+  const cameraMotionRow = els.videoCameraMotionGroup?.closest(".setting-row");
+  if (cameraMotionRow) cameraMotionRow.hidden = !isMuse;
+  if (videoResolutionRow) videoResolutionRow.hidden = usesPixelSize || isMuse;
   if (videoCountRow) videoCountRow.hidden = !isSeedanceModel(state.settings.videoModel);
   const documentedVeo31 = isDocumentedVeo31Model(state.settings.videoModel);
   if (videoStyleRow) videoStyleRow.hidden = false;
-  if (videoAudioRow) videoAudioRow.hidden = usesOfficialGrokRequest || documentedVeo31;
+  if (videoAudioRow) videoAudioRow.hidden = usesOfficialGrokRequest || documentedVeo31 || isMuse;
+  if (isMuse) {
+    renderOptionGroup(els.videoCameraMotionGroup, "videoCameraMotion", MUSE_CAMERA_MOTION_OPTIONS, museCameraMotion());
+  }
   renderOptionGroup(els.videoResolutionGroup, "videoResolution", videoResolutionOptionsWithDims(), effectiveVideoResolution(), { tiered: true });
   renderDurationSlider(els.videoDurationGroup, "videoDuration", videoDurationOptionsForModel(), String(effectiveVideoDuration()));
   renderOptionGroup(els.videoCountGroup, "videoCount", COUNT_SETTING_OPTIONS, String(effectiveVideoCount()));
@@ -2253,7 +2310,7 @@ function settingsSummaryParts() {
     const parts = [
       optionLabelForValue(videoAspectOptionsForModel(), effectiveVideoAspectRatio()),
     ];
-    if (!usesPixelVideoSizeOptions(modelId)) {
+    if (!usesPixelVideoSizeOptions(modelId) && !isMuseVideoModel(modelId)) {
       parts.push(optionLabelForValue(videoResolutionOptionsWithDims(), effectiveVideoResolution()));
     }
     parts.push(duration === -1 ? "自动" : `${duration}s`);
@@ -2463,7 +2520,7 @@ function videoResolutionOptionsForModel() {
     return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["720p", "1080p"].includes(option.value));
   }
   if (isMuseVideoModel(modelId)) {
-    return VIDEO_RESOLUTION_OPTIONS.filter((option) => MUSE_VIDEO_RESOLUTION_OPTIONS.includes(option.value));
+    return VIDEO_RESOLUTION_OPTIONS.filter((option) => option.value === "720p");
   }
   if (isSeedance25Model(modelId)) {
     return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["480p", "720p", "1080p"].includes(option.value));
@@ -2529,7 +2586,9 @@ function videoAspectOptionsForModel() {
 function videoDurationOptionsForModel() {
   const modelId = state.settings.videoModel;
   if (isMuseVideoModel(modelId)) {
-    return MUSE_VIDEO_DURATION_OPTIONS.map((seconds) => ({ value: String(seconds), label: `${seconds}s` }));
+    const fixed = museFixedSeconds(modelId);
+    const list = fixed ? [fixed] : Array.from({ length: MUSE_VIDEO_MAX_SECONDS }, (_, index) => index + 1);
+    return list.map((seconds) => ({ value: String(seconds), label: `${seconds}s` }));
   }
   if (isKlingModel(modelId)) {
     return Array.from({ length: 13 }, (_, index) => {
@@ -2566,6 +2625,43 @@ function videoDurationOptionsForModel() {
     return { value: seconds, label: `${seconds}s` };
   });
   return [{ value: "-1", label: "自动" }, ...options];
+}
+
+function museFixedSeconds(modelId) {
+  const match = /muse.*?[-_](\d+)s$/i.exec(String(modelId || "").trim());
+  return match ? Number(match[1]) : 0;
+}
+
+// r26: why a material purpose is unavailable for the current video model ("" = available).
+// kinds: first-frame, last-frame, video-reference, audio, context
+function videoMediaBlockedReason(kind, modelId = state.settings.videoModel) {
+  if (isMuseVideoModel(modelId)) {
+    if (kind === "video-reference") return "Muse 不支持参考视频";
+    if (kind === "audio") return "Muse 不支持参考音频（原生有声）";
+    if (kind === "context") return "Muse 不使用上下文";
+  }
+  return "";
+}
+
+function videoReferenceImageLimit(modelId = state.settings.videoModel) {
+  if (isMuseVideoModel(modelId)) return MUSE_VIDEO_MAX_REFERENCE_IMAGES;
+  return 6;
+}
+
+function blockedVideoUpload(kind) {
+  if (state.settings.visualMode !== "video") return false;
+  const reason = videoMediaBlockedReason(kind);
+  if (reason) showToast(reason, true);
+  return !!reason;
+}
+
+function visualContextBlocked() {
+  return state.settings.visualMode === "video" && !!videoMediaBlockedReason("context");
+}
+
+function museCameraMotion() {
+  const value = String(state.settings.videoCameraMotion || "");
+  return MUSE_CAMERA_MOTION_OPTIONS.some((option) => option.value === value) ? value : "";
 }
 
 function isSeedanceModel(modelId) {
@@ -2729,7 +2825,7 @@ function effectiveVideoAspectRatio(modelId = state.settings.videoModel) {
 
 function effectiveVideoResolution(modelId = state.settings.videoModel) {
   const resolution = state.settings.videoResolution;
-  if (isMuseVideoModel(modelId)) return MUSE_VIDEO_RESOLUTION_OPTIONS.includes(resolution) ? resolution : "720p";
+  if (isMuseVideoModel(modelId)) return "720p";
   if (isKlingModel(modelId)) return ["720p", "1080p"].includes(resolution) ? resolution : "720p";
   if (isSeedance25Model(modelId)) return ["480p", "720p", "1080p"].includes(resolution) ? resolution : "720p";
   if (isSeedance2FastModel(modelId)) return ["480p", "720p"].includes(resolution) ? resolution : "720p";
@@ -2754,18 +2850,16 @@ function normalizeSeedDanceDuration(value, modelId = state.settings.videoModel) 
   return Math.min(maximum, Math.max(minimum, Number.isFinite(duration) ? Math.round(duration) : fallback));
 }
 
-function normalizeMuseDuration(value) {
+function normalizeMuseDuration(value, modelId = state.settings.videoModel) {
+  const fixed = museFixedSeconds(modelId);
+  if (fixed) return fixed;
   const duration = Number(value);
-  if (!Number.isFinite(duration)) return MUSE_VIDEO_DURATION_OPTIONS[0];
-  return MUSE_VIDEO_DURATION_OPTIONS.reduce(
-    (closest, option) => (Math.abs(option - duration) < Math.abs(closest - duration) ? option : closest),
-    MUSE_VIDEO_DURATION_OPTIONS[0]
-  );
+  return Math.min(MUSE_VIDEO_MAX_SECONDS, Math.max(1, Number.isFinite(duration) ? Math.round(duration) : 5));
 }
 
 function effectiveVideoDuration(modelId = state.settings.videoModel) {
   const profile = getModelProfile(modelId);
-  if (isMuseVideoModel(modelId)) return normalizeMuseDuration(state.settings.videoDuration);
+  if (isMuseVideoModel(modelId)) return normalizeMuseDuration(state.settings.videoDuration, modelId);
   if (isKlingModel(modelId)) return normalizeKlingDuration(state.settings.videoDuration);
   if (profile?.provider === "seedance") {
     if (isSeedance25Model(modelId) && draftMedia.videoReferences.length) return -1;
@@ -2871,6 +2965,7 @@ function setVisualOption(key, value) {
 function effectiveVideoDurationForValue(value) {
   const modelId = state.settings.videoModel;
   const profile = getModelProfile(modelId);
+  if (isMuseVideoModel(modelId)) return normalizeMuseDuration(value, modelId);
   if (isKlingModel(modelId)) return normalizeKlingDuration(value);
   if (profile?.provider === "seedance") return normalizeSeedDanceDuration(value, modelId);
   if (isSora2Model(modelId)) return normalizeSora2Duration(value, modelId);
@@ -4533,8 +4628,8 @@ function buildVideoRequest(prompt, profile) {
 function buildMuseVideoRequest(prompt, profile) {
   const settings = state.settings;
   const modelId = settings.videoModel;
-  const duration = normalizeMuseDuration(settings.videoDuration);
-  const references = buildVideoReferences();
+  const cameraMotion = museCameraMotion();
+  const images = draftMedia.videoImages.slice(0, MUSE_VIDEO_MAX_REFERENCE_IMAGES).map((item) => item.dataUrl);
   return {
     label: `${profile?.vendor || "Muse"} 视频参数`,
     endpoint: videoGenerationEndpoint(profile),
@@ -4542,17 +4637,13 @@ function buildMuseVideoRequest(prompt, profile) {
     body: JSON.stringify({
       model: modelId,
       prompt,
+      seconds: String(normalizeMuseDuration(settings.videoDuration, modelId)),
       aspect_ratio: effectiveVideoAspectRatio(modelId),
-      resolution: effectiveVideoResolution(modelId),
-      duration,
-      duration_seconds: duration,
+      camera_motion: cameraMotion || undefined,
+      first_frame: draftMedia.firstFrame ? draftMedia.firstFrame.dataUrl : undefined,
+      last_frame: draftMedia.lastFrame ? draftMedia.lastFrame.dataUrl : undefined,
+      images: images.length ? images : undefined,
       style: settings.videoStyle === "auto" ? undefined : settings.videoStyle,
-      audio: !!settings.videoAudio,
-      generate_audio: !!settings.videoAudio,
-      first_frame: draftMedia.firstFrame ? mediaPayload(draftMedia.firstFrame) : undefined,
-      last_frame: draftMedia.lastFrame ? mediaPayload(draftMedia.lastFrame) : undefined,
-      references,
-      response_format: "url",
     }),
   };
 }
@@ -5048,6 +5139,7 @@ function videoGenerationEndpoint(profile) {
     return endpoint;
   }
   if (profile?.provider === "sora" && defaultLike) return "/v1/videos";
+  if (profile?.provider === "muse") return defaultLike ? "/v1/videos" : endpoint;
   if (profile?.provider === "seedance" && isSeedance20UnifiedModel(state.settings.videoModel)
       && !usesNewApiSeedance20Task(state.settings.videoModel) && defaultLike) {
     return "/api/v3/contents/generations/tasks";
@@ -5113,7 +5205,7 @@ function videoReferenceMeta() {
 }
 
 function buildVisualContextPrompt(prompt) {
-  if (!isVisualContextEnabled()) return prompt;
+  if (!isVisualContextEnabled() || visualContextBlocked()) return prompt;
   const turns = clampNumber(state.settings.visualContextTurns, 1, 10, 4);
   const previous = state.visualTasks
     .filter((task) => task.sessionId === activeVisualSessionId && task.prompt && task.status !== "error")
@@ -5268,6 +5360,7 @@ function videoStatusEndpointForTask(task) {
   }
   if (task?.provider === "xai" && defaultLike) return "/v1/videos/{id}";
   if (task?.provider === "sora" && defaultLike) return "/v1/videos/{id}";
+  if ((task?.provider === "muse") && defaultLike) return "/v1/videos/{id}";
   if (task?.provider === "seedance" && task.requestEndpoint === "/api/v3/contents/generations/tasks" && defaultLike) {
     return "/api/v3/contents/generations/tasks/{id}";
   }
@@ -5997,6 +6090,7 @@ async function handleReferenceFiles(event, kind) {
   const files = Array.from(event.target.files || []);
   event.target.value = "";
   if (!files.length) return;
+  if (kind !== "image-reference" && blockedVideoUpload(kind)) return;
   try {
     const items = await Promise.all(files.map((file) => readMediaFile(file)));
     if (kind === "image-reference") {
@@ -6013,7 +6107,7 @@ async function handleReferenceFiles(event, kind) {
           const limit = isKlingOmniModel(state.settings.videoModel) ? 3 : 1;
           draftMedia.videoImages = uniqueMedia([...draftMedia.videoImages, ...items]).slice(0, limit);
         } else {
-          draftMedia.videoImages = uniqueMedia([...draftMedia.videoImages, ...items]).slice(0, 6);
+          draftMedia.videoImages = uniqueMedia([...draftMedia.videoImages, ...items]).slice(0, videoReferenceImageLimit());
         }
       } else {
         draftMedia.imageReferences = uniqueMedia([...draftMedia.imageReferences, ...items]).slice(0, 9);
@@ -6169,8 +6263,8 @@ function availableImagePurposes() {
   if (isDocumentedVeo31Model(modelId) || isKlingModel(modelId) || isGrokVideoModel(modelId)) return [];
   const purposes = [];
   if (els.uploadImageRefButton && !els.uploadImageRefButton.hidden) purposes.push({ key: "videoImages", label: "参考图" });
-  if (els.uploadFirstFrameButton && !els.uploadFirstFrameButton.hidden) purposes.push({ key: "firstFrame", label: "首帧" });
-  if (els.uploadLastFrameButton && !els.uploadLastFrameButton.hidden) purposes.push({ key: "lastFrame", label: "尾帧" });
+  if (els.uploadFirstFrameButton && !els.uploadFirstFrameButton.hidden && !videoMediaBlockedReason("first-frame")) purposes.push({ key: "firstFrame", label: "首帧" });
+  if (els.uploadLastFrameButton && !els.uploadLastFrameButton.hidden && !videoMediaBlockedReason("last-frame")) purposes.push({ key: "lastFrame", label: "尾帧" });
   return purposes;
 }
 
@@ -6199,11 +6293,11 @@ function assignDraftPurpose(targetKey) {
   if (Array.isArray(draftMedia[from.key])) draftMedia[from.key] = draftMedia[from.key].filter((entry) => entry.id !== from.id);
   else draftMedia[from.key] = null;
   if (targetKey === "videoImages") {
-    draftMedia.videoImages = uniqueMedia([...draftMedia.videoImages, item]).slice(0, 6);
+    draftMedia.videoImages = uniqueMedia([...draftMedia.videoImages, item]).slice(0, videoReferenceImageLimit());
   } else {
     const displaced = draftMedia[targetKey];
     draftMedia[targetKey] = item;
-    if (displaced) draftMedia.videoImages = uniqueMedia([...draftMedia.videoImages, displaced]).slice(0, 6);
+    if (displaced) draftMedia.videoImages = uniqueMedia([...draftMedia.videoImages, displaced]).slice(0, videoReferenceImageLimit());
   }
   selectedDraftMedia = { key: targetKey, id: item.id };
   const label = { videoImages: "参考图", firstFrame: "首帧", lastFrame: "尾帧" }[targetKey];
@@ -7361,7 +7455,7 @@ function inferModelProfile(modelId, raw = {}) {
   if (id.includes("veo")) return { id: modelId, label: modelId, vendor: "Google", type: "video", provider: "veo", capabilities: ["视频"] };
   if (id.includes("seedance")) return { id: modelId, label: modelId, vendor: "Doubao", type: "video", provider: "seedance", capabilities: ["视频"] };
   if (isMuseVideoModel(id)) {
-    return { id: modelId, label: modelId, vendor: "Muse", type: "video", provider: "muse", capabilities: ["文生视频", "图生视频", "首帧", "参考图"] };
+    return { id: modelId, label: modelId, vendor: "Muse", type: "video", provider: "muse", capabilities: ["文生视频", "图生视频", "首帧", "尾帧", "参考图"] };
   }
   if (id.includes("grok") && id.includes("video")) {
     return { id: modelId, label: modelId, vendor: "xAI", type: "video", provider: "xai", capabilities: ["文生视频", "图生视频"] };

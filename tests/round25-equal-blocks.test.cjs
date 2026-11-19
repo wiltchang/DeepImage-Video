@@ -22,5 +22,5 @@ test("r25 html: vendor icon sits in the label row, not in the trigger", () => {
   assert.match(html, /summary-label-row">\s*<span class="summary-label">模型<\/span>\s*<span id="quickModelVendor"/);
   const trigger = html.slice(html.indexOf('id="quickModelButton"'), html.indexOf('id="modelPopover"'));
   assert.doesNotMatch(trigger, /vendor-icon/);
-  assert.match(html, /\?v=20261119-r25/);
+  assert.match(html, /\?v=20261119-r26/);
 });

@@ -6614,3 +6614,9 @@ summary:active,
 .workspace.visual-workspace .summary-settings-block .summary-value {
   font-size: 12px;
 }
+
+/* r26: tool chips unavailable for the current video model (greyed, click explains why) */
+.tool-chip.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

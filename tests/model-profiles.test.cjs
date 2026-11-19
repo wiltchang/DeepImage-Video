@@ -197,9 +197,10 @@ test("Muse models infer as video and post to the generic video generations endpo
   });
   setTestDraftMedia({});
   const request = buildVideoRequest("测试视频提示词", { provider: "muse", vendor: "Muse" });
-  assert.equal(request.endpoint, "/v1/video/generations");
+  assert.equal(request.endpoint, "/v1/videos");
   const body = JSON.parse(request.body);
   assert.equal(body.model, "muse-video-1");
   assert.equal(body.aspect_ratio, "9:16");
-  assert.equal(body.duration, 5);
+  assert.equal(body.seconds, "7");
+  assert.equal(body.duration, undefined);
 });
